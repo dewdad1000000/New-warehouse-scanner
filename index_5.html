@@ -1,0 +1,1045 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Warehouse Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+  :root{ padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  [hidden]{ display:none !important; }
+  img{ max-width:100%; }
+  /* Deliberately single-theme: a dark, industrial chrome around an always-on
+     camera viewfinder reads like a scanner/camera app, cuts glare on a
+     warehouse floor, and keeps barcode contrast high. Colors are painted
+     explicitly rather than left to the host theme. */
+  :root{
+    --bg:#14181d;
+    --surface:#1c2229;
+    --surface-2:#242b33;
+    --border:#333c46;
+    --border-soft:#2a323b;
+    --text:#eef1f4;
+    --text-dim:#93a0ad;
+    --accent:#f5a623;
+    --accent-ink:#1a1206;
+    --good:#3ecf8e;
+    --bad:#ef5350;
+    --font-display:'Oswald',system-ui,sans-serif;
+    --font-body:'Barlow',system-ui,sans-serif;
+    --font-mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--font-body);
+    padding-inline:16px;
+  }
+  h1,h2{font-family:var(--font-display);text-transform:uppercase;letter-spacing:.03em;text-wrap:balance;margin:0;}
+  p{margin:0;}
+  button{font-family:var(--font-body);cursor:pointer;}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  [hidden]{display:none!important;}
+
+  .eyebrow{
+    font-family:var(--font-mono);
+    font-size:.72rem;
+    letter-spacing:.09em;
+    text-transform:uppercase;
+    color:var(--text-dim);
+  }
+  .muted{color:var(--text-dim);}
+  .small{font-size:.82rem;}
+
+  #main{max-width:520px;margin-inline:auto;padding-bottom:32px;}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding-block:16px 12px;
+    position:sticky;top:env(safe-area-inset-top,0px);
+    background:var(--bg);
+    z-index:5;
+  }
+  .brand{display:flex;align-items:center;gap:8px;}
+  .brand-mark{color:var(--accent);font-size:1.15rem;line-height:1;}
+  .brand-name{font-family:var(--font-display);font-size:1rem;letter-spacing:.04em;text-transform:uppercase;}
+  .topbar-actions{display:flex;align-items:center;gap:8px;}
+  .icon-btn{
+    width:44px;height:44px;border-radius:12px;
+    background:var(--surface);border:1px solid var(--border);
+    color:var(--text);font-size:1.15rem;display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+  }
+  .icon-btn:active{background:var(--surface-2);border-color:var(--accent);transform:scale(.94);}
+  .pill-btn{
+    background:var(--surface);border:1px solid var(--border);color:var(--text);
+    border-radius:999px;padding:10px 14px;font-size:.85rem;font-weight:600;
+    max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    touch-action:manipulation;-webkit-tap-highlight-color:transparent;min-height:44px;
+  }
+  .pill-btn:active{background:var(--surface-2);transform:scale(.97);}
+
+  /* ---------- location banner ---------- */
+  .location-banner{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    background:linear-gradient(135deg,var(--surface-2),var(--surface));
+    border:1px solid var(--border);border-radius:16px;
+    padding:16px 18px;margin-bottom:14px;
+  }
+  .location-code{
+    font-family:var(--font-mono);font-size:1.3rem;font-weight:600;
+    color:var(--accent);letter-spacing:.02em;
+    word-break:break-word;
+  }
+  .location-banner.is-empty .location-code{color:var(--text-dim);font-family:var(--font-body);font-size:1rem;font-weight:500;}
+  .ghost-btn{
+    background:transparent;border:1px solid var(--border);color:var(--text);
+    border-radius:10px;padding:8px 12px;font-size:.82rem;font-weight:600;flex-shrink:0;
+  }
+  .ghost-btn.light{border-color:rgba(255,255,255,.35);color:#fff;}
+
+  /* ---------- scan action buttons ---------- */
+  .scan-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;}
+  .action-btn{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    padding-block:20px;border-radius:16px;font-family:var(--font-display);
+    text-transform:uppercase;letter-spacing:.04em;font-size:.95rem;font-weight:600;
+    border:1px solid var(--border);
+  }
+  .action-icon{font-size:1.5rem;}
+  .action-btn.outline{background:var(--surface);color:var(--text);}
+  .action-btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
+  .action-btn.primary:disabled{background:var(--surface);color:var(--text-dim);border-color:var(--border);}
+
+  .session-count{
+    font-family:var(--font-mono);font-size:.8rem;color:var(--text-dim);
+    text-align:right;margin-block:10px 4px;
+  }
+
+  /* ---------- live feed ---------- */
+  .feed{margin-top:18px;}
+  .feed-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;}
+  .feed-head h2{font-size:1rem;}
+  .feed-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;}
+  .feed-row{
+    display:flex;align-items:center;gap:10px;
+    background:var(--surface);border:1px solid var(--border-soft);border-radius:12px;
+    padding:10px 12px;
+  }
+  .feed-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--text-dim);}
+  .feed-dot.good{background:var(--good);}
+  .feed-dot.pending{background:var(--accent);}
+  .feed-dot.bad{background:var(--bad);}
+  .feed-main{flex:1;min-width:0;}
+  .feed-item{font-family:var(--font-mono);font-size:.88rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .feed-sub{font-size:.76rem;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .feed-time{font-family:var(--font-mono);font-size:.72rem;color:var(--text-dim);flex-shrink:0;font-variant-numeric:tabular-nums;}
+  .feed-empty{
+    border:1px dashed var(--border);border-radius:12px;padding:20px 16px;text-align:center;line-height:1.5;
+  }
+
+  /* ---------- overlays (name gate / settings) ---------- */
+  .overlay{
+    position:fixed;inset:0;z-index:20;
+    background:rgba(10,13,16,.72);
+    display:flex;align-items:flex-end;justify-content:center;
+    padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  }
+  .overlay-card{
+    width:100%;max-width:480px;max-height:88vh;overflow-y:auto;
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:20px;padding:22px;
+    display:flex;flex-direction:column;gap:12px;
+  }
+  .overlay-head{display:flex;align-items:center;justify-content:space-between;}
+  .overlay-card h1{font-size:1.35rem;margin-top:4px;}
+  .overlay-card h2{font-size:1.1rem;}
+  .field-label{font-size:.82rem;font-weight:600;margin-top:6px;}
+  input[type="text"],input:not([type]),input[type="url"]{
+    width:100%;background:var(--surface-2);border:1px solid var(--border);
+    color:var(--text);border-radius:10px;padding:11px 12px;font-size:.95rem;font-family:var(--font-body);
+  }
+  input[type="url"]{font-family:var(--font-mono);font-size:.82rem;}
+  .inline-form{display:flex;gap:8px;}
+  .inline-form input{flex:1;}
+  .inline-form button{
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    border-radius:10px;padding:0 16px;font-weight:600;font-size:.9rem;
+  }
+  .chip-row{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    border-radius:999px;padding:9px 15px;font-size:.88rem;font-weight:600;
+  }
+  .chip.selected{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
+  .primary-btn{
+    background:var(--accent);color:var(--accent-ink);border:none;border-radius:12px;
+    padding:13px;font-weight:700;font-size:.95rem;font-family:var(--font-display);
+    text-transform:uppercase;letter-spacing:.03em;
+  }
+  .secondary-btn{
+    background:transparent;border:1px solid var(--border);color:var(--text);
+    border-radius:12px;padding:12px;font-weight:600;font-size:.88rem;
+  }
+  .full{width:100%;}
+  .status-row{font-size:.82rem;padding:9px 12px;border-radius:10px;background:var(--surface-2);}
+  .status-row.good{color:var(--good);}
+  .status-row.warn{color:var(--accent);}
+
+  /* ---------- viewfinder ---------- */
+  /* A bounded camera card, not an edge-to-edge takeover: a header (shelf +
+     count) above it and the caption/Done bar below it, so the live camera
+     itself only occupies the middle portion of the screen. */
+  .viewfinder{
+    position:fixed;inset:0;z-index:30;background:var(--bg);
+    display:flex;flex-direction:column;gap:12px;
+    padding:calc(14px + env(safe-area-inset-top,0px)) 14px calc(14px + env(safe-area-inset-bottom,0px));
+  }
+  .viewfinder-header{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0;
+  }
+  .viewfinder-loc{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .viewfinder-loc .eyebrow{color:var(--text-dim);}
+  .vf-location-name{
+    font-family:var(--font-mono);font-weight:600;font-size:1.05rem;color:var(--text);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .vf-count-badge{
+    font-family:var(--font-mono);font-size:.85rem;font-weight:700;color:var(--accent-ink);
+    background:var(--accent);border-radius:999px;padding:7px 13px;flex-shrink:0;
+    white-space:nowrap;
+  }
+  .viewfinder-stage{
+    position:relative;flex:1;min-height:0;
+    border-radius:22px;overflow:hidden;background:#000;
+    border:1px solid var(--border-soft);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .viewfinder-stage video{
+    position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  }
+  .reticle{
+    position:relative;width:min(70vw,300px);aspect-ratio:1;
+    border:3px solid rgba(245,166,35,.9);border-radius:18px;
+    box-shadow:0 0 0 2000px rgba(0,0,0,.42);
+  }
+  .scan-check{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    pointer-events:none;
+  }
+  .scan-check span{
+    font-size:3.4rem;line-height:1;color:var(--good);
+    background:rgba(10,13,16,.5);border-radius:50%;padding:14px 18px;
+    opacity:0;transform:scale(.6);
+    transition:opacity .1s ease,transform .18s cubic-bezier(.2,1.4,.4,1);
+  }
+  .scan-check.on span{opacity:1;transform:scale(1);}
+  .viewfinder-bar{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0;
+  }
+  .viewfinder-bar p{color:var(--text);font-weight:600;font-size:.9rem;}
+  .scan-flash{
+    position:absolute;inset:0;background:rgba(62,207,142,.28);opacity:0;pointer-events:none;
+    transition:opacity .15s ease;
+  }
+  .scan-flash.on{opacity:1;transition:none;}
+  .scan-flash.bad{background:rgba(239,83,80,.34);}
+
+  .toast{
+    position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));
+    transform:translateX(-50%);
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    padding:10px 16px;border-radius:999px;font-size:.85rem;z-index:40;
+    box-shadow:0 8px 24px rgba(0,0,0,.35);
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="nameGate" class="overlay" hidden>
+    <div class="overlay-card">
+      <p class="eyebrow">Warehouse Inventory Scanner</p>
+      <h1>Who's scanning?</h1>
+      <p class="muted small">Pick your name, or add yourself. It gets tagged on every scan you make.</p>
+      <div id="nameChips" class="chip-row"></div>
+      <form id="nameForm" class="inline-form">
+        <input id="nameInput" placeholder="Your name" autocomplete="off" />
+        <button type="submit">Go</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="settingsOverlay" class="overlay" hidden>
+    <div class="overlay-card">
+      <div class="overlay-head">
+        <h2>Settings</h2>
+        <button class="icon-btn" id="closeSettingsBtn" aria-label="Close">✕</button>
+      </div>
+
+      <p class="field-label">Google Sheets connection</p>
+      <p class="muted small">Paste the Apps Script web app URL (ends in <code>/exec</code>). Set it once — every phone that opens this app link picks it up automatically.</p>
+      <input type="url" id="webAppUrlInput" placeholder="https://script.google.com/macros/s/.../exec" />
+      <div class="status-row" id="connectionStatus"></div>
+      <button id="saveUrlBtn" class="secondary-btn full">Save connection</button>
+
+      <p class="field-label">Scanner roster</p>
+      <p class="muted small">Names that show up on the "who's scanning" screen for every phone.</p>
+      <div id="rosterChips" class="chip-row"></div>
+      <form id="rosterForm" class="inline-form">
+        <input id="rosterInput" placeholder="Add a name" autocomplete="off" />
+        <button type="submit">Add</button>
+      </form>
+
+      <button id="retrySyncBtn" class="secondary-btn full">Retry unsynced scans</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">▣</span>
+        <span class="brand-name">Warehouse Scanner</span>
+      </div>
+      <div class="topbar-actions">
+        <button id="whoBtn" class="pill-btn" type="button"></button>
+        <button id="settingsBtn" class="icon-btn" type="button" aria-label="Settings">⚙</button>
+      </div>
+    </header>
+
+    <section class="location-banner is-empty" id="locationBanner">
+      <div>
+        <p class="eyebrow" id="locationLabel">No location set</p>
+        <p class="location-code" id="locationCode">Scan a location QR to begin</p>
+      </div>
+      <button id="changeLocationBtn" class="ghost-btn" type="button" hidden>Change</button>
+    </section>
+
+    <section class="scan-actions">
+      <button id="scanLocationBtn" class="action-btn outline" type="button">
+        <span class="action-icon">▦</span>
+        <span>Scan Location</span>
+      </button>
+      <button id="scanItemBtn" class="action-btn primary" type="button" disabled>
+        <span class="action-icon">▥</span>
+        <span>Scan Item</span>
+      </button>
+    </section>
+
+    <p class="session-count" id="sessionCount" hidden></p>
+
+    <section class="feed">
+      <div class="feed-head">
+        <h2>Live activity</h2>
+        <span class="muted small" id="feedMeta"></span>
+      </div>
+      <ul id="feedList" class="feed-list"></ul>
+      <p id="feedEmpty" class="muted small feed-empty">Scans will show up here the moment they happen — on this phone and every other one connected to this app.</p>
+    </section>
+  </div>
+
+  <div id="viewfinder" class="viewfinder" hidden>
+    <div class="viewfinder-header">
+      <div class="viewfinder-loc">
+        <p class="eyebrow" id="vfLocationLabel">Scanning into</p>
+        <p class="vf-location-name" id="vfLocationName"></p>
+      </div>
+      <span id="vfCountBadge" class="vf-count-badge" hidden></span>
+    </div>
+    <div class="viewfinder-stage">
+      <video id="video" playsinline muted></video>
+      <div class="reticle"></div>
+      <div id="scanFlash" class="scan-flash"></div>
+      <div id="scanCheck" class="scan-check"><span>✓</span></div>
+    </div>
+    <div class="viewfinder-bar">
+      <p id="scanCaption"></p>
+      <button id="cancelScanBtn" class="ghost-btn" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ---------- state ----------
+  // Pre-filled with your deployed Apps Script Web App URL, so phones work
+  // out of the box without pasting it into Settings first. Change it there
+  // (or edit DEFAULT_WEB_APP_URL below and re-upload) if you ever redeploy
+  // and get a new URL.
+  var DEFAULT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw8OXNIe5W92f7DNoobO9n6W-3Jfeu9xqmG3LVpi1iwzZ49hIwqybad6M6mg6f8XLFV8A/exec';
+  var db = null;
+  var deviceId = getOrCreateDeviceId();
+  var scannerName = localStorage.getItem('wh_scanner_name') || '';
+  var activeLocation = localStorage.getItem('wh_active_location') || '';
+  var sessionLocationCount = 0;
+  var config = { webAppUrl: DEFAULT_WEB_APP_URL, scannerNames: [] };
+  var feedPollTimer = null;
+  var currentMode = null; // 'location' | 'item'
+  var codeReader = null;
+  var scanControls = null;
+  var lastDecode = { text: '', time: 0 };
+  var localScans = []; // used only when db capability is unavailable
+
+  // ---------- element refs ----------
+  var el = {};
+  ['nameGate','nameChips','nameForm','nameInput',
+   'settingsOverlay','settingsBtn','closeSettingsBtn','webAppUrlInput','connectionStatus','saveUrlBtn',
+   'rosterChips','rosterForm','rosterInput','retrySyncBtn',
+   'whoBtn','locationBanner','locationLabel','locationCode','changeLocationBtn',
+   'scanLocationBtn','scanItemBtn','sessionCount',
+   'feedList','feedEmpty','feedMeta',
+   'viewfinder','video','scanCaption','cancelScanBtn','scanFlash',
+   'vfLocationLabel','vfLocationName','vfCountBadge','scanCheck'
+  ].forEach(function(id){ el[id] = document.getElementById(id); });
+
+  // ---------- helpers ----------
+  function getOrCreateDeviceId(){
+    try {
+      var id = localStorage.getItem('wh_device_id');
+      if (!id) { id = 'dev-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('wh_device_id', id); }
+      return id;
+    } catch(e) { return 'dev-' + Date.now(); }
+  }
+
+  function toast(msg){
+    var t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function(){ t.remove(); }, 2600);
+  }
+
+  function relTime(ts){
+    var diff = Date.now() - ts;
+    if (diff < 5000) return 'just now';
+    if (diff < 60000) return Math.floor(diff/1000) + 's ago';
+    if (diff < 3600000) return Math.floor(diff/60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
+    return Math.floor(diff/86400000) + 'd ago';
+  }
+
+  function vibrate(ms){ try { navigator.vibrate && navigator.vibrate(ms); } catch(e){} }
+
+  // ---------- local (no-db) config fallback ----------
+  function loadLocalConfig(){
+    config.webAppUrl = localStorage.getItem('wh_config_url') || DEFAULT_WEB_APP_URL;
+    try { config.scannerNames = JSON.parse(localStorage.getItem('wh_config_roster') || '[]'); }
+    catch(e) { config.scannerNames = []; }
+  }
+  function saveLocalConfig(){
+    try {
+      localStorage.setItem('wh_config_url', config.webAppUrl);
+      localStorage.setItem('wh_config_roster', JSON.stringify(config.scannerNames));
+    } catch(e) {}
+  }
+
+  // ---------- render: who / location ----------
+  function renderWho(){
+    el.whoBtn.textContent = scannerName ? scannerName : 'Set name';
+  }
+  function renderLocation(){
+    if (activeLocation) {
+      el.locationBanner.classList.remove('is-empty');
+      el.locationLabel.textContent = 'Scanning into';
+      el.locationCode.textContent = activeLocation;
+      el.changeLocationBtn.hidden = false;
+      el.scanItemBtn.disabled = false;
+    } else {
+      el.locationBanner.classList.add('is-empty');
+      el.locationLabel.textContent = 'No location set';
+      el.locationCode.textContent = 'Scan a location QR to begin';
+      el.changeLocationBtn.hidden = true;
+      el.scanItemBtn.disabled = true;
+    }
+    renderSessionCount();
+  }
+  function renderSessionCount(){
+    if (activeLocation && sessionLocationCount > 0) {
+      el.sessionCount.hidden = false;
+      el.sessionCount.textContent = sessionLocationCount + ' item' + (sessionLocationCount === 1 ? '' : 's') + ' scanned into this location this session';
+    } else {
+      el.sessionCount.hidden = true;
+    }
+  }
+
+  // ---------- name gate ----------
+  function renderNameChips(){
+    el.nameChips.innerHTML = '';
+    config.scannerNames.forEach(function(name){
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip' + (name === scannerName ? ' selected' : '');
+      chip.textContent = name;
+      chip.addEventListener('click', function(){ chooseScanner(name); });
+      el.nameChips.appendChild(chip);
+    });
+  }
+  function chooseScanner(name){
+    scannerName = name;
+    try { localStorage.setItem('wh_scanner_name', name); } catch(e) {}
+    renderWho();
+    el.nameGate.hidden = true;
+  }
+  function openNameGate(){
+    renderNameChips();
+    el.nameInput.value = '';
+    el.nameGate.hidden = false;
+  }
+  el.whoBtn.addEventListener('click', openNameGate);
+  el.nameForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    var name = el.nameInput.value.trim();
+    if (!name) return;
+    if (config.scannerNames.indexOf(name) === -1) {
+      config.scannerNames.push(name);
+      persistRoster();
+    }
+    chooseScanner(name);
+  });
+
+  // ---------- settings ----------
+  function renderRoster(){
+    el.rosterChips.innerHTML = '';
+    config.scannerNames.forEach(function(name){
+      var chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.textContent = name;
+      el.rosterChips.appendChild(chip);
+    });
+  }
+  function renderConnectionStatus(){
+    if (config.webAppUrl) {
+      el.connectionStatus.className = 'status-row good';
+      el.connectionStatus.textContent = '● Connected — scans sync to your Google Sheet.';
+    } else {
+      el.connectionStatus.className = 'status-row warn';
+      el.connectionStatus.textContent = '● Not connected yet — scans are only kept in this live feed until you add the Sheets URL.';
+    }
+  }
+  function openSettings(){
+    el.webAppUrlInput.value = config.webAppUrl;
+    renderRoster();
+    renderConnectionStatus();
+    el.settingsOverlay.hidden = false;
+  }
+  el.settingsBtn.addEventListener('click', openSettings);
+  el.closeSettingsBtn.addEventListener('click', function(){ el.settingsOverlay.hidden = true; });
+  el.settingsOverlay.addEventListener('click', function(e){ if (e.target === el.settingsOverlay) el.settingsOverlay.hidden = true; });
+
+  function persistRoster(){
+    if (db) { db.doc('config/settings').set({ webAppUrl: config.webAppUrl, scannerNames: config.scannerNames }).catch(function(){}); }
+    else { saveLocalConfig(); }
+  }
+
+  el.rosterForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    var name = el.rosterInput.value.trim();
+    if (!name) return;
+    if (config.scannerNames.indexOf(name) === -1) config.scannerNames.push(name);
+    el.rosterInput.value = '';
+    renderRoster();
+    renderNameChips();
+    persistRoster();
+  });
+
+  el.saveUrlBtn.addEventListener('click', function(){
+    config.webAppUrl = el.webAppUrlInput.value.trim();
+    renderConnectionStatus();
+    if (db) {
+      db.doc('config/settings').set({ webAppUrl: config.webAppUrl, scannerNames: config.scannerNames })
+        .then(function(){ toast('Connection saved'); })
+        .catch(function(){ toast('Could not save — try again'); });
+    } else {
+      saveLocalConfig();
+      toast('Saved on this phone');
+    }
+  });
+
+  el.retrySyncBtn.addEventListener('click', function(){
+    el.retrySyncBtn.disabled = true;
+    el.retrySyncBtn.textContent = 'Retrying…';
+    retryAllPending().then(function(count){
+      el.retrySyncBtn.disabled = false;
+      el.retrySyncBtn.textContent = 'Retry unsynced scans';
+      toast(count ? ('Retried ' + count + ' scan' + (count===1?'':'s')) : 'Nothing pending');
+    });
+  });
+
+  // ---------- sync ----------
+  function makeLocalRef(scanObj){
+    return {
+      update: function(patch){
+        Object.assign(scanObj, patch);
+        renderFeed(localScans);
+        return Promise.resolve();
+      }
+    };
+  }
+
+  function trySync(ref, scan){
+    if (!config.webAppUrl) return Promise.resolve(false);
+    return fetch(config.webAppUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        itemId: scan.itemId, location: scan.location,
+        scannedBy: scan.scannedBy, timestamp: scan.timestamp
+      })
+    }).then(function(res){
+      if (res && res.ok) { return ref.update({ synced: true }).then(function(){ return true; }); }
+      return ref.update({ syncAttempts: (scan.syncAttempts||0) + 1 }).then(function(){ return false; });
+    }).catch(function(){
+      return ref.update({ syncAttempts: (scan.syncAttempts||0) + 1 }).then(function(){ return false; }).catch(function(){ return false; });
+    });
+  }
+
+  function retryOwnPending(){
+    if (!db || !config.webAppUrl) return;
+    db.collection('scans').where('createdBy','==',deviceId).where('synced','==',false).limit(20).get()
+      .then(function(snap){
+        snap.docs.forEach(function(docSnap){
+          var ref = db.collection('scans').doc(docSnap.id);
+          trySync(ref, docSnap.data());
+        });
+      }).catch(function(){});
+  }
+
+  function retryAllPending(){
+    if (!config.webAppUrl) return Promise.resolve(0);
+    if (db) {
+      return db.collection('scans').where('synced','==',false).limit(50).get().then(function(snap){
+        var jobs = snap.docs.map(function(docSnap){
+          var ref = db.collection('scans').doc(docSnap.id);
+          return trySync(ref, docSnap.data());
+        });
+        return Promise.all(jobs).then(function(){ return snap.docs.length; });
+      }).catch(function(){ return 0; });
+    } else {
+      var pending = localScans.filter(function(s){ return !s.synced; });
+      var jobs = pending.map(function(s){ return trySync(makeLocalRef(s), s); });
+      return Promise.all(jobs).then(function(){ return pending.length; });
+    }
+  }
+
+  function cleanupOldScans(){
+    if (!db) return;
+    var cutoff = Date.now() - 24*60*60*1000;
+    db.collection('scans').where('synced','==',true).orderBy('timestamp','asc').limit(50).get()
+      .then(function(snap){
+        snap.docs.forEach(function(docSnap){
+          var data = docSnap.data();
+          if (data.timestamp && data.timestamp < cutoff) {
+            db.collection('scans').doc(docSnap.id).delete().catch(function(){});
+          }
+        });
+      }).catch(function(){});
+  }
+
+  // ---------- recording a scan ----------
+  function recordScan(itemId, location){
+    var scan = {
+      itemId: itemId, location: location, scannedBy: scannerName || 'Unknown',
+      timestamp: Date.now(), synced: false, createdBy: deviceId, syncAttempts: 0
+    };
+    if (db) {
+      db.collection('scans').add(scan).then(function(ref){
+        trySync(ref, scan);
+      }).catch(function(){
+        // db add failed — still keep it visible locally and try to sync
+        localScans.unshift(scan);
+        renderFeed(localScans);
+        trySync(makeLocalRef(scan), scan);
+      });
+    } else {
+      localScans.unshift(scan);
+      if (localScans.length > 30) localScans.length = 30;
+      renderFeed(localScans);
+      trySync(makeLocalRef(scan), scan);
+    }
+  }
+
+  // ---------- live feed ----------
+  function renderFeed(list){
+    if (!list.length) {
+      el.feedList.innerHTML = '';
+      el.feedEmpty.hidden = false;
+      el.feedMeta.textContent = '';
+      return;
+    }
+    el.feedEmpty.hidden = true;
+    el.feedMeta.textContent = list.length + ' recent';
+    el.feedList.innerHTML = '';
+    list.forEach(function(scan){
+      var li = document.createElement('li');
+      li.className = 'feed-row';
+      var dotClass = scan.synced ? 'good' : (scan.syncAttempts > 2 ? 'bad' : 'pending');
+      li.innerHTML =
+        '<span class="feed-dot ' + dotClass + '"></span>' +
+        '<span class="feed-main">' +
+          '<div class="feed-item"></div>' +
+          '<div class="feed-sub"></div>' +
+        '</span>' +
+        '<span class="feed-time"></span>';
+      li.querySelector('.feed-item').textContent = scan.itemId;
+      li.querySelector('.feed-sub').textContent = '→ ' + scan.location + ' · ' + scan.scannedBy;
+      li.querySelector('.feed-time').textContent = relTime(scan.timestamp);
+      el.feedList.appendChild(li);
+    });
+  }
+
+  function subscribeScans(){
+    db.collection('scans').orderBy('timestamp','desc').limit(30).onSnapshot(
+      function(snap){
+        var list = snap.docs.map(function(d){ var data = d.data(); data.id = d.id; return data; });
+        renderFeed(list);
+      },
+      function(){ /* degrade silently, local recordScan path still renders */ }
+    );
+  }
+
+  // Used instead of subscribeScans() when the shared live-sync store isn't
+  // available (e.g. running outside claude.ai, such as on GitHub Pages) —
+  // pulls the shared "live" feed straight from the Sheet's History tab, so
+  // every phone still sees everyone's scans, just on a short delay instead
+  // of instantly.
+  function pollFeed(){
+    if (!config.webAppUrl) { renderFeed(localScans); return; }
+    fetch(config.webAppUrl + '?action=recent&limit=25')
+      .then(function(res){ return res.json(); })
+      .then(function(data){
+        var serverRows = (data && data.recent) ? data.recent.map(function(r){
+          return { itemId: r.itemId, location: r.location, scannedBy: r.scannedBy, timestamp: r.timestamp, synced: true };
+        }) : [];
+        var pendingLocal = localScans.filter(function(s){ return !s.synced; });
+        var merged = pendingLocal.concat(serverRows);
+        merged.sort(function(a,b){ return b.timestamp - a.timestamp; });
+        renderFeed(merged.slice(0, 30));
+      })
+      .catch(function(){ renderFeed(localScans); });
+  }
+
+  function startFeedPolling(){
+    if (feedPollTimer) return;
+    pollFeed();
+    feedPollTimer = setInterval(pollFeed, 6000);
+  }
+
+  // refresh relative timestamps periodically without a new subscription
+  setInterval(function(){
+    var rows = el.feedList.querySelectorAll('.feed-time');
+    // re-render is cheap enough and keeps times honest; skip if nothing shown
+    if (rows.length) { /* handled on next snapshot/update naturally */ }
+  }, 30000);
+
+  // ---------- camera / scanning ----------
+  function getReader(){
+    if (!codeReader) {
+      try {
+        if (window.ZXingBrowser) {
+          // TRY_HARDER tells the decoder to spend extra effort on a hard
+          // frame (small, low-contrast, or slightly damaged barcodes)
+          // instead of giving up fast. "3" is the exact numeric hint ID
+          // this pinned library version (@zxing/browser@0.2.1) uses for
+          // it internally — it isn't exposed on the public ZXingBrowser
+          // global, so it's hardcoded here rather than referenced by
+          // name; verified directly against this version's own source.
+          // If the pinned version in the <script> tag below is ever
+          // changed, re-verify this still means TRY_HARDER.
+          var hints = new Map();
+          hints.set(3, true);
+          codeReader = new ZXingBrowser.BrowserMultiFormatReader(hints, {
+            // Tighter loop than the library default (500ms/500ms) so the
+            // next barcode is picked up quickly once one's in frame.
+            delayBetweenScanAttempts: 75,
+            delayBetweenScanSuccess: 250
+          });
+        }
+      } catch (e) { codeReader = null; }
+    }
+    return codeReader;
+  }
+
+  // ---------- audio confirmation ----------
+  // A short beep generated on the fly (no audio file to host/load) so a
+  // successful scan is confirmed by sound as well as vibration + the
+  // green flash + the checkmark. Created lazily on the first scan-button
+  // tap (a real user gesture) so mobile browsers don't block it.
+  var audioCtx = null;
+  function ensureAudio(){
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) {}
+  }
+  function playBeep(){
+    try {
+      ensureAudio();
+      if (!audioCtx) return;
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 1500;
+      var t = audioCtx.currentTime;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.32, t + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.12);
+    } catch (e) {}
+  }
+
+  function flashOk(){
+    el.scanFlash.classList.add('on');
+    setTimeout(function(){ el.scanFlash.classList.remove('on'); }, 140);
+    el.scanCheck.classList.add('on');
+    setTimeout(function(){ el.scanCheck.classList.remove('on'); }, 480);
+  }
+
+  function flashBad(){
+    el.scanFlash.classList.add('on', 'bad');
+    setTimeout(function(){ el.scanFlash.classList.remove('on', 'bad'); }, 220);
+  }
+
+  function playErrorBeep(){
+    try {
+      ensureAudio();
+      if (!audioCtx) return;
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 260;
+      var t = audioCtx.currentTime;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.22, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.23);
+    } catch (e) {}
+  }
+
+  // ---------- location vs. item code validation ----------
+  // Location QR codes are printed with this prefix baked into their
+  // encoded text (e.g. "loc:Shelf 1") so the app can tell a location code
+  // apart from an item code by CONTENT, regardless of what kind of code
+  // (QR or barcode) either one is printed as. Case-insensitive — doesn't
+  // matter how it's typed when the labels are made.
+  var LOCATION_PREFIX = 'loc:';
+  function isLocationCode(text){
+    return typeof text === 'string' && text.trim().toLowerCase().indexOf(LOCATION_PREFIX) === 0;
+  }
+  function stripLocationPrefix(text){
+    return text.trim().slice(LOCATION_PREFIX.length).trim();
+  }
+
+  function renderViewfinderHeader(){
+    el.vfLocationName.textContent = activeLocation || '—';
+    if (currentMode === 'item' && sessionLocationCount > 0) {
+      el.vfCountBadge.hidden = false;
+      el.vfCountBadge.textContent = sessionLocationCount + ' scanned';
+    } else {
+      el.vfCountBadge.hidden = true;
+    }
+  }
+
+  function cameraErrorMessage(err){
+    var name = err && err.name;
+    if (name === 'NotAllowedError' || name === 'SecurityError') return 'Camera permission blocked — check site settings and reload';
+    if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'No usable camera found on this device';
+    if (name === 'NotReadableError') return 'Camera is busy in another app — close it and try again';
+    return 'Camera error' + (name ? ' (' + name + ')' : '') + ' — try again';
+  }
+
+  function startScan(mode){
+    var reader = getReader();
+    if (!reader) { toast('Scanning library failed to load — refresh the page'); return; }
+    currentMode = mode;
+    el.scanCaption.textContent = mode === 'location'
+      ? 'Point at the location QR code'
+      : ('Scanning into ' + activeLocation + ' — point at an item barcode. Keep going — no need to close this.');
+    el.cancelScanBtn.textContent = mode === 'item' ? 'Done' : 'Cancel';
+    el.viewfinder.hidden = false;
+    renderViewfinderHeader();
+    reader.decodeFromConstraints(
+      {
+        video: {
+          facingMode: { ideal: 'environment' },
+          // Unconstrained resolution lets some phones request a very high
+          // sensor mode that makes every decode attempt slow, so this is
+          // capped rather than left wide open — but capped high enough
+          // (1080p) for small or slightly low-quality printed barcodes to
+          // still resolve clearly, paired with the TRY_HARDER decode hint
+          // set on the reader above.
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          advanced: [{ focusMode: 'continuous' }]
+        }
+      },
+      el.video,
+      function(result){ if (result) handleDecode(result.getText()); }
+    ).then(function(controls){
+      // Guard against a race with stopScan()/restartScan(): if the
+      // user tapped Done (or we're mid-restart into a newer scan) before
+      // this async camera setup finished, don't leave an orphaned stream
+      // running that nothing on screen can stop.
+      if (currentMode !== mode || el.viewfinder.hidden) {
+        try { controls.stop(); } catch(e){}
+        return;
+      }
+      scanControls = controls;
+    }).catch(function(err){
+      toast(cameraErrorMessage(err));
+      stopScan();
+    });
+  }
+
+  // The library's continuous decode loop is only reliable for the FIRST
+  // code it finds in a given decodeFromConstraints() call — every scan in
+  // testing worked for that first read, but a second successful read
+  // inside the *same* loop reliably killed it (and silently took the
+  // camera stream down with it). Rather than trust that loop across
+  // multiple reads, EVERY decode — whether it's accepted as a real scan
+  // or rejected as the wrong kind of code (see isLocationCode above) —
+  // gets its own fresh attempt afterward: a brand-new reader instance and
+  // a brand-new decodeFromConstraints call, which is the exact path
+  // that's proven itself reliable every time. A rejected code still
+  // counts as "a decode" to the library even though the app ignores its
+  // content, so it still needs this restart or the *next* real scan
+  // would be the second read in that loop and would silently fail.
+  function restartScan(mode, caption){
+    if (scanControls) { try { scanControls.stop(); } catch(e){} scanControls = null; }
+    codeReader = null;
+    startScan(mode);
+    if (caption !== undefined) el.scanCaption.textContent = caption;
+  }
+
+  function stopScan(){
+    if (scanControls) { try { scanControls.stop(); } catch(e){} scanControls = null; }
+    el.viewfinder.hidden = true;
+    currentMode = null;
+  }
+
+  function handleDecode(text){
+    var now = Date.now();
+    if (text === lastDecode.text && now - lastDecode.time < 2000) return;
+    lastDecode = { text: text, time: now };
+
+    if (currentMode === 'location') {
+      if (!isLocationCode(text)) {
+        vibrate([40, 70, 40]);
+        flashBad();
+        playErrorBeep();
+        restartScan('location', '⚠ That\'s not a location code — scan the shelf\'s QR code.');
+        return;
+      }
+      activeLocation = stripLocationPrefix(text);
+      try { localStorage.setItem('wh_active_location', activeLocation); } catch(e) {}
+      sessionLocationCount = 0;
+      vibrate(70);
+      flashOk();
+      playBeep();
+      renderLocation();
+      setTimeout(stopScan, 220);
+    } else if (currentMode === 'item') {
+      if (!activeLocation) return;
+      if (isLocationCode(text)) {
+        vibrate([40, 70, 40]);
+        flashBad();
+        playErrorBeep();
+        restartScan('item', '⚠ That was a location code, not an item — scan an item next.');
+        return;
+      }
+      vibrate(50);
+      flashOk();
+      playBeep();
+      sessionLocationCount++;
+      renderSessionCount();
+      recordScan(text, activeLocation);
+      // Camera restarts fresh for the next item (see restartScan) — this
+      // caption is the only feedback visible while the viewfinder covers
+      // the rest of the app, so make it obvious the scan landed and the
+      // next item can go right away.
+      restartScan('item', '✓ ' + text + ' — ' + sessionLocationCount +
+        ' scanned into ' + activeLocation + '. Keep scanning, or tap Done.');
+    }
+  }
+
+  el.scanLocationBtn.addEventListener('click', function(){ ensureAudio(); startScan('location'); });
+  el.changeLocationBtn.addEventListener('click', function(){ ensureAudio(); startScan('location'); });
+  el.scanItemBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanItemBtn.disabled) startScan('item'); });
+  el.cancelScanBtn.addEventListener('click', stopScan);
+
+  // ---------- boot ----------
+  function boot(){
+    renderWho();
+    renderLocation();
+    renderFeed(localScans);
+
+    if (window.claude && typeof window.claude.use === 'function') {
+      window.claude.use('db').then(function(ns){
+        db = ns;
+        if (db) {
+          db.doc('config/settings').get().then(function(snap){
+            if (snap.exists) {
+              var d = snap.data();
+              config.webAppUrl = d.webAppUrl || '';
+              config.scannerNames = Array.isArray(d.scannerNames) ? d.scannerNames : [];
+            }
+            renderNameChips();
+            renderRoster();
+            renderConnectionStatus();
+            if (!scannerName) openNameGate();
+          }).catch(function(){ if (!scannerName) openNameGate(); });
+
+          db.doc('config/settings').onSnapshot(function(snap){
+            if (snap.exists) {
+              var d = snap.data();
+              config.webAppUrl = d.webAppUrl || '';
+              config.scannerNames = Array.isArray(d.scannerNames) ? d.scannerNames : [];
+              renderNameChips();
+              renderRoster();
+              renderConnectionStatus();
+            }
+          });
+
+          subscribeScans();
+          setInterval(cleanupOldScans, 10 * 60 * 1000);
+          setInterval(retryOwnPending, 15000);
+        } else {
+          loadLocalConfig();
+          renderNameChips();
+          renderConnectionStatus();
+          if (!scannerName) openNameGate();
+          startFeedPolling();
+        }
+      });
+    } else {
+      loadLocalConfig();
+      renderNameChips();
+      renderConnectionStatus();
+      if (!scannerName) openNameGate();
+      startFeedPolling();
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
+</script>
+</body>
+</html>
