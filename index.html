@@ -193,30 +193,63 @@
   .status-row.warn{color:var(--accent);}
 
   /* ---------- viewfinder ---------- */
+  /* A bounded camera card, not an edge-to-edge takeover: a header (shelf +
+     count) above it and the caption/Done bar below it, so the live camera
+     itself only occupies the middle portion of the screen. */
   .viewfinder{
-    position:fixed;inset:0;z-index:30;background:#000;
+    position:fixed;inset:0;z-index:30;background:var(--bg);
+    display:flex;flex-direction:column;gap:12px;
+    padding:calc(14px + env(safe-area-inset-top,0px)) 14px calc(14px + env(safe-area-inset-bottom,0px));
+  }
+  .viewfinder-header{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0;
+  }
+  .viewfinder-loc{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .viewfinder-loc .eyebrow{color:var(--text-dim);}
+  .vf-location-name{
+    font-family:var(--font-mono);font-weight:600;font-size:1.05rem;color:var(--text);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .vf-count-badge{
+    font-family:var(--font-mono);font-size:.85rem;font-weight:700;color:var(--accent-ink);
+    background:var(--accent);border-radius:999px;padding:7px 13px;flex-shrink:0;
+    white-space:nowrap;
+  }
+  .viewfinder-stage{
+    position:relative;flex:1;min-height:0;
+    border-radius:22px;overflow:hidden;background:#000;
+    border:1px solid var(--border-soft);
     display:flex;align-items:center;justify-content:center;
   }
-  .viewfinder video{
+  .viewfinder-stage video{
     position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
   }
   .reticle{
-    position:relative;width:min(78vw,320px);aspect-ratio:1;
+    position:relative;width:min(70vw,300px);aspect-ratio:1;
     border:3px solid rgba(245,166,35,.9);border-radius:18px;
     box-shadow:0 0 0 2000px rgba(0,0,0,.42);
   }
-  .viewfinder-bar{
-    position:absolute;left:0;right:0;bottom:0;
-    padding:18px 20px calc(20px + env(safe-area-inset-bottom,0px));
-    display:flex;align-items:center;justify-content:space-between;gap:12px;
-    background:linear-gradient(to top,rgba(0,0,0,.75),transparent);
+  .scan-check{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    pointer-events:none;
   }
-  .viewfinder-bar p{color:#fff;font-weight:600;font-size:.92rem;}
+  .scan-check span{
+    font-size:3.4rem;line-height:1;color:var(--good);
+    background:rgba(10,13,16,.5);border-radius:50%;padding:14px 18px;
+    opacity:0;transform:scale(.6);
+    transition:opacity .1s ease,transform .18s cubic-bezier(.2,1.4,.4,1);
+  }
+  .scan-check.on span{opacity:1;transform:scale(1);}
+  .viewfinder-bar{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0;
+  }
+  .viewfinder-bar p{color:var(--text);font-weight:600;font-size:.9rem;}
   .scan-flash{
     position:absolute;inset:0;background:rgba(62,207,142,.28);opacity:0;pointer-events:none;
     transition:opacity .15s ease;
   }
   .scan-flash.on{opacity:1;transition:none;}
+  .scan-flash.bad{background:rgba(239,83,80,.34);}
 
   .toast{
     position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));
@@ -312,13 +345,23 @@
   </div>
 
   <div id="viewfinder" class="viewfinder" hidden>
-    <video id="video" playsinline muted></video>
-    <div class="reticle"></div>
+    <div class="viewfinder-header">
+      <div class="viewfinder-loc">
+        <p class="eyebrow" id="vfLocationLabel">Scanning into</p>
+        <p class="vf-location-name" id="vfLocationName"></p>
+      </div>
+      <span id="vfCountBadge" class="vf-count-badge" hidden></span>
+    </div>
+    <div class="viewfinder-stage">
+      <video id="video" playsinline muted></video>
+      <div class="reticle"></div>
+      <div id="scanFlash" class="scan-flash"></div>
+      <div id="scanCheck" class="scan-check"><span>✓</span></div>
+    </div>
     <div class="viewfinder-bar">
       <p id="scanCaption"></p>
-      <button id="cancelScanBtn" class="ghost-btn light" type="button">Cancel</button>
+      <button id="cancelScanBtn" class="ghost-btn" type="button">Cancel</button>
     </div>
-    <div id="scanFlash" class="scan-flash"></div>
   </div>
 </div>
 
@@ -354,7 +397,8 @@
    'whoBtn','locationBanner','locationLabel','locationCode','changeLocationBtn',
    'scanLocationBtn','scanItemBtn','sessionCount',
    'feedList','feedEmpty','feedMeta',
-   'viewfinder','video','scanCaption','cancelScanBtn','scanFlash'
+   'viewfinder','video','scanCaption','cancelScanBtn','scanFlash',
+   'vfLocationLabel','vfLocationName','vfCountBadge','scanCheck'
   ].forEach(function(id){ el[id] = document.getElementById(id); });
 
   // ---------- helpers ----------
@@ -700,15 +744,120 @@
   function getReader(){
     if (!codeReader) {
       try {
-        if (window.ZXingBrowser) codeReader = new ZXingBrowser.BrowserMultiFormatReader();
+        if (window.ZXingBrowser) {
+          // TRY_HARDER tells the decoder to spend extra effort on a hard
+          // frame (small, low-contrast, or slightly damaged barcodes)
+          // instead of giving up fast. "3" is the exact numeric hint ID
+          // this pinned library version (@zxing/browser@0.2.1) uses for
+          // it internally — it isn't exposed on the public ZXingBrowser
+          // global, so it's hardcoded here rather than referenced by
+          // name; verified directly against this version's own source.
+          // If the pinned version in the <script> tag below is ever
+          // changed, re-verify this still means TRY_HARDER.
+          var hints = new Map();
+          hints.set(3, true);
+          codeReader = new ZXingBrowser.BrowserMultiFormatReader(hints, {
+            // Tighter loop than the library default (500ms/500ms) so the
+            // next barcode is picked up quickly once one's in frame.
+            delayBetweenScanAttempts: 75,
+            delayBetweenScanSuccess: 250
+          });
+        }
       } catch (e) { codeReader = null; }
     }
     return codeReader;
   }
 
+  // ---------- audio confirmation ----------
+  // A short beep generated on the fly (no audio file to host/load) so a
+  // successful scan is confirmed by sound as well as vibration + the
+  // green flash + the checkmark. Created lazily on the first scan-button
+  // tap (a real user gesture) so mobile browsers don't block it.
+  var audioCtx = null;
+  function ensureAudio(){
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) {}
+  }
+  function playBeep(){
+    try {
+      ensureAudio();
+      if (!audioCtx) return;
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 1500;
+      var t = audioCtx.currentTime;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.32, t + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.12);
+    } catch (e) {}
+  }
+
   function flashOk(){
     el.scanFlash.classList.add('on');
     setTimeout(function(){ el.scanFlash.classList.remove('on'); }, 140);
+    el.scanCheck.classList.add('on');
+    setTimeout(function(){ el.scanCheck.classList.remove('on'); }, 480);
+  }
+
+  function flashBad(){
+    el.scanFlash.classList.add('on', 'bad');
+    setTimeout(function(){ el.scanFlash.classList.remove('on', 'bad'); }, 220);
+  }
+
+  function playErrorBeep(){
+    try {
+      ensureAudio();
+      if (!audioCtx) return;
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 260;
+      var t = audioCtx.currentTime;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.22, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.23);
+    } catch (e) {}
+  }
+
+  // ---------- location vs. item code validation ----------
+  // Location QR codes are printed with "loc" at the very start of their
+  // encoded text (e.g. "loc:Shelf 1", "loc Shelf 1", "loc-Shelf 1" — the
+  // separator after "loc" doesn't matter, and matching is
+  // case-insensitive) so the app can tell a location code apart from an
+  // item code by CONTENT, regardless of what kind of code (QR or barcode)
+  // either one is printed as, and regardless of exactly how the label was
+  // typed when it was made.
+  // The (?![a-z]) guard stops "loc" from matching inside an unrelated
+  // word that merely starts with those letters (e.g. "location123",
+  // "locker55") — it only counts as the prefix when "loc" is followed by
+  // a separator, a digit, or the end of the text.
+  var LOCATION_PREFIX_RE = /^loc(?![a-z])[\s:._-]*/i;
+  function isLocationCode(text){
+    return typeof text === 'string' && LOCATION_PREFIX_RE.test(text.trim());
+  }
+  function stripLocationPrefix(text){
+    return text.trim().replace(LOCATION_PREFIX_RE, '').trim();
+  }
+
+  function renderViewfinderHeader(){
+    el.vfLocationName.textContent = activeLocation || '—';
+    if (currentMode === 'item' && sessionLocationCount > 0) {
+      el.vfCountBadge.hidden = false;
+      el.vfCountBadge.textContent = sessionLocationCount + ' scanned';
+    } else {
+      el.vfCountBadge.hidden = true;
+    }
   }
 
   function cameraErrorMessage(err){
@@ -725,18 +874,61 @@
     currentMode = mode;
     el.scanCaption.textContent = mode === 'location'
       ? 'Point at the location QR code'
-      : ('Scanning into ' + activeLocation + ' — point at an item barcode');
+      : ('Scanning into ' + activeLocation + ' — point at an item barcode. Keep going — no need to close this.');
+    el.cancelScanBtn.textContent = mode === 'item' ? 'Done' : 'Cancel';
     el.viewfinder.hidden = false;
+    renderViewfinderHeader();
     reader.decodeFromConstraints(
-      { video: { facingMode: { ideal: 'environment' } } },
+      {
+        video: {
+          facingMode: { ideal: 'environment' },
+          // Unconstrained resolution lets some phones request a very high
+          // sensor mode that makes every decode attempt slow, so this is
+          // capped rather than left wide open — but capped high enough
+          // (1080p) for small or slightly low-quality printed barcodes to
+          // still resolve clearly, paired with the TRY_HARDER decode hint
+          // set on the reader above.
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          advanced: [{ focusMode: 'continuous' }]
+        }
+      },
       el.video,
       function(result){ if (result) handleDecode(result.getText()); }
     ).then(function(controls){
+      // Guard against a race with stopScan()/restartScan(): if the
+      // user tapped Done (or we're mid-restart into a newer scan) before
+      // this async camera setup finished, don't leave an orphaned stream
+      // running that nothing on screen can stop.
+      if (currentMode !== mode || el.viewfinder.hidden) {
+        try { controls.stop(); } catch(e){}
+        return;
+      }
       scanControls = controls;
     }).catch(function(err){
       toast(cameraErrorMessage(err));
       stopScan();
     });
+  }
+
+  // The library's continuous decode loop is only reliable for the FIRST
+  // code it finds in a given decodeFromConstraints() call — every scan in
+  // testing worked for that first read, but a second successful read
+  // inside the *same* loop reliably killed it (and silently took the
+  // camera stream down with it). Rather than trust that loop across
+  // multiple reads, EVERY decode — whether it's accepted as a real scan
+  // or rejected as the wrong kind of code (see isLocationCode above) —
+  // gets its own fresh attempt afterward: a brand-new reader instance and
+  // a brand-new decodeFromConstraints call, which is the exact path
+  // that's proven itself reliable every time. A rejected code still
+  // counts as "a decode" to the library even though the app ignores its
+  // content, so it still needs this restart or the *next* real scan
+  // would be the second read in that loop and would silently fail.
+  function restartScan(mode, caption){
+    if (scanControls) { try { scanControls.stop(); } catch(e){} scanControls = null; }
+    codeReader = null;
+    startScan(mode);
+    if (caption !== undefined) el.scanCaption.textContent = caption;
   }
 
   function stopScan(){
@@ -751,26 +943,48 @@
     lastDecode = { text: text, time: now };
 
     if (currentMode === 'location') {
-      activeLocation = text;
-      try { localStorage.setItem('wh_active_location', text); } catch(e) {}
+      if (!isLocationCode(text)) {
+        vibrate([40, 70, 40]);
+        flashBad();
+        playErrorBeep();
+        restartScan('location', '⚠ That\'s not a location code — scan the shelf\'s QR code.');
+        return;
+      }
+      activeLocation = stripLocationPrefix(text);
+      try { localStorage.setItem('wh_active_location', activeLocation); } catch(e) {}
       sessionLocationCount = 0;
       vibrate(70);
       flashOk();
+      playBeep();
       renderLocation();
       setTimeout(stopScan, 220);
     } else if (currentMode === 'item') {
       if (!activeLocation) return;
+      if (isLocationCode(text)) {
+        vibrate([40, 70, 40]);
+        flashBad();
+        playErrorBeep();
+        restartScan('item', '⚠ That was a location code, not an item — scan an item next.');
+        return;
+      }
       vibrate(50);
       flashOk();
+      playBeep();
       sessionLocationCount++;
       renderSessionCount();
       recordScan(text, activeLocation);
+      // Camera restarts fresh for the next item (see restartScan) — this
+      // caption is the only feedback visible while the viewfinder covers
+      // the rest of the app, so make it obvious the scan landed and the
+      // next item can go right away.
+      restartScan('item', '✓ ' + text + ' — ' + sessionLocationCount +
+        ' scanned into ' + activeLocation + '. Keep scanning, or tap Done.');
     }
   }
 
-  el.scanLocationBtn.addEventListener('click', function(){ startScan('location'); });
-  el.changeLocationBtn.addEventListener('click', function(){ startScan('location'); });
-  el.scanItemBtn.addEventListener('click', function(){ if (!el.scanItemBtn.disabled) startScan('item'); });
+  el.scanLocationBtn.addEventListener('click', function(){ ensureAudio(); startScan('location'); });
+  el.changeLocationBtn.addEventListener('click', function(){ ensureAudio(); startScan('location'); });
+  el.scanItemBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanItemBtn.disabled) startScan('item'); });
   el.cancelScanBtn.addEventListener('click', stopScan);
 
   // ---------- boot ----------
