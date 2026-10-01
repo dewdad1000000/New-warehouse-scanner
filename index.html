@@ -214,6 +214,10 @@
   .status-row{font-size:.82rem;padding:9px 12px;border-radius:10px;background:var(--surface-2);}
   .status-row.good{color:var(--good);}
   .status-row.warn{color:var(--accent);}
+  /* The QR is on a white backing regardless of theme, since that's what
+     most phone cameras and label-maker apps read most reliably. It's
+     always optional — the plain-text code above it is the real deliverable. */
+  .qr-image{display:block;margin:4px auto;width:180px;height:180px;border-radius:12px;background:#fff;padding:10px;}
 
   /* ---------- viewfinder ---------- */
   /* A bounded camera card, not an edge-to-edge takeover: a header (shelf +
@@ -319,6 +323,39 @@
         <input id="rosterInput" placeholder="Add a name" autocomplete="off" />
         <button type="submit">Add</button>
       </form>
+
+      <p class="field-label">Products</p>
+      <p class="muted small">Register a new product and get a ready-to-use code automatically — no need to pick a number yourself.</p>
+      <button id="openProductBtn" class="secondary-btn full" type="button">+ Add New Product</button>
+    </div>
+  </div>
+
+  <div id="productOverlay" class="overlay" hidden>
+    <div class="overlay-card">
+      <div class="overlay-head">
+        <h2>Add New Product</h2>
+        <button class="icon-btn" id="closeProductBtn" aria-label="Close">✕</button>
+      </div>
+
+      <div id="productFormView">
+        <p class="field-label">Product name</p>
+        <input id="productNameInput" placeholder="e.g. Phone Case - Black" autocomplete="off" />
+        <button id="productGenerateBtn" class="primary-btn full" type="button">Generate Code &amp; Register</button>
+      </div>
+
+      <div id="productResultView" hidden>
+        <p class="muted small">New product registered:</p>
+        <p class="location-code" id="productResultCode" style="font-size:1.7rem;"></p>
+        <p id="productResultName" class="muted small"></p>
+        <img id="productResultQr" class="qr-image" alt="QR code for this product — optional, for screenshotting or printing directly" onerror="this.style.display='none'" onload="this.style.display='block'" />
+        <p class="muted small">Type the code above into your label maker, or screenshot the QR code if that's easier.</p>
+        <button id="productAddAnotherBtn" class="secondary-btn full" type="button">Add Another</button>
+        <button id="productDoneBtn" class="primary-btn full" type="button">Done</button>
+      </div>
+
+      <p class="field-label">Recently added</p>
+      <ul id="productRecentList" class="feed-list"></ul>
+      <p id="productRecentEmpty" class="muted small">None yet.</p>
     </div>
   </div>
 
@@ -456,7 +493,10 @@
    'feedList','feedEmpty','feedMeta',
    'viewfinder','video','scanCaption','cancelScanBtn','scanFlash',
    'vfLocationLabel','vfLocationName','vfCountBadge','scanCheck',
-   'qtyOverlay','qtyActionLabel','qtyProductCode','qtyLocationName','qtyInput','qtyMinusBtn','qtyPlusBtn','qtyConfirmBtn','qtyCancelBtn'
+   'qtyOverlay','qtyActionLabel','qtyProductCode','qtyLocationName','qtyInput','qtyMinusBtn','qtyPlusBtn','qtyConfirmBtn','qtyCancelBtn',
+   'openProductBtn','productOverlay','closeProductBtn','productFormView','productNameInput','productGenerateBtn',
+   'productResultView','productResultCode','productResultName','productResultQr','productAddAnotherBtn','productDoneBtn',
+   'productRecentList','productRecentEmpty'
   ].forEach(function(id){ el[id] = document.getElementById(id); });
 
   // ---------- helpers ----------
@@ -619,6 +659,100 @@
     }
   });
 
+  // ---------- add new product (auto-generated code) ----------
+  // A short, keyless public QR-rendering service — purely a convenience so
+  // the new code can be screenshotted or printed straight from the phone.
+  // The plain-text code is always shown too and is the real deliverable;
+  // if this image fails to load (no connection, service unreachable), the
+  // onerror handler on the <img> tag just hides it — nothing else depends on it.
+  function qrImageUrl(text){
+    return 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(text);
+  }
+
+  function renderRecentProducts(list){
+    el.productRecentList.innerHTML = '';
+    if (!list || !list.length) {
+      el.productRecentEmpty.hidden = false;
+      return;
+    }
+    el.productRecentEmpty.hidden = true;
+    list.forEach(function(p){
+      var li = document.createElement('li');
+      li.className = 'feed-row';
+      li.innerHTML =
+        '<span class="feed-main">' +
+          '<div class="feed-item"></div>' +
+          '<div class="feed-sub"></div>' +
+        '</span>';
+      li.querySelector('.feed-item').textContent = p.productCode;
+      li.querySelector('.feed-sub').textContent = p.name;
+      el.productRecentList.appendChild(li);
+    });
+  }
+
+  function loadRecentProducts(){
+    if (!config.webAppUrl) { renderRecentProducts([]); return; }
+    fetch(config.webAppUrl + '?action=recentProducts&limit=5')
+      .then(function(res){ return res.json(); })
+      .then(function(data){ renderRecentProducts(data && data.products); })
+      .catch(function(){ renderRecentProducts([]); });
+  }
+
+  function showProductForm(){
+    el.productResultView.hidden = true;
+    el.productFormView.hidden = false;
+    el.productNameInput.value = '';
+    el.productGenerateBtn.disabled = false;
+    el.productGenerateBtn.textContent = 'Generate Code & Register';
+    setTimeout(function(){ try { el.productNameInput.focus(); } catch(e){} }, 30);
+  }
+
+  function openProductOverlay(){
+    showProductForm();
+    loadRecentProducts();
+    el.productOverlay.hidden = false;
+  }
+
+  el.openProductBtn.addEventListener('click', openProductOverlay);
+  el.closeProductBtn.addEventListener('click', function(){ el.productOverlay.hidden = true; });
+  el.productOverlay.addEventListener('click', function(e){ if (e.target === el.productOverlay) el.productOverlay.hidden = true; });
+
+  el.productGenerateBtn.addEventListener('click', function(){
+    var name = el.productNameInput.value.trim();
+    if (!name) { toast('Enter a product name first'); return; }
+    if (!config.webAppUrl) { toast('No Google Sheet connected yet — add the connection above first.'); return; }
+    el.productGenerateBtn.disabled = true;
+    el.productGenerateBtn.textContent = 'Generating…';
+    fetch(config.webAppUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ op: 'addProduct', name: name, scannedBy: scannerName || 'Unknown', timestamp: Date.now() })
+    }).then(function(res){ return res.json(); })
+      .then(function(resp){
+        el.productGenerateBtn.disabled = false;
+        el.productGenerateBtn.textContent = 'Generate Code & Register';
+        if (resp && resp.ok) {
+          el.productResultCode.textContent = resp.productCode;
+          el.productResultName.textContent = resp.name;
+          el.productResultQr.src = qrImageUrl(resp.productCode);
+          el.productFormView.hidden = true;
+          el.productResultView.hidden = false;
+          loadRecentProducts();
+          toast('Registered ' + resp.productCode);
+        } else {
+          toast((resp && resp.message) || 'Could not register that product — try again.');
+        }
+      })
+      .catch(function(){
+        el.productGenerateBtn.disabled = false;
+        el.productGenerateBtn.textContent = 'Generate Code & Register';
+        toast('Could not reach your Google Sheet — check your connection and try again.');
+      });
+  });
+
+  el.productAddAnotherBtn.addEventListener('click', showProductForm);
+  el.productDoneBtn.addEventListener('click', function(){ el.productOverlay.hidden = true; });
+
   // ---------- submitting an add/remove event ----------
   // Unlike the old per-item model, this always has to go straight to the
   // server: only the Sheet's "Products" tab knows whether a code is really
@@ -627,6 +761,7 @@
   function submitScanEvent(mode, productCode, quantity){
     var action = mode === 'add' ? 'add' : 'remove';
     var payload = {
+      op: 'scanEvent',
       productCode: productCode, location: activeLocation, action: action,
       quantity: quantity, scannedBy: scannerName || 'Unknown', timestamp: Date.now()
     };
@@ -849,18 +984,21 @@
   }
 
   // ---------- location vs. item code validation ----------
-  // Location QR codes are printed with "loc" at the very start of their
-  // encoded text (e.g. "loc:Shelf 1", "loc Shelf 1", "loc-Shelf 1" — the
-  // separator after "loc" doesn't matter, and matching is
-  // case-insensitive) so the app can tell a location code apart from an
-  // item code by CONTENT, regardless of what kind of code (QR or barcode)
-  // either one is printed as, and regardless of exactly how the label was
-  // typed when it was made.
-  // The (?![a-z]) guard stops "loc" from matching inside an unrelated
-  // word that merely starts with those letters (e.g. "location123",
-  // "locker55") — it only counts as the prefix when "loc" is followed by
-  // a separator, a digit, or the end of the text.
-  var LOCATION_PREFIX_RE = /^loc(?![a-z])[\s:._-]*/i;
+  // Location QR codes are printed with a single "L" at the very start of
+  // their encoded text (e.g. "L Shelf 1", "L:Shelf 1", "L1", "L-Shelf 1" —
+  // a separator after "L" is optional and, if present, can be a space,
+  // colon, dot or dash; matching is case-insensitive) so the app can tell a
+  // location code apart from a product code by CONTENT, regardless of what
+  // kind of code (QR or barcode) either one is printed as.
+  // (2026-10-01: this used to be the three letters "loc" — switched to a
+  // single "L" to match the product codes' "P" convention. Every location
+  // label has to be reprinted with the new "L" prefix and rescanned once;
+  // an old "loc"-prefixed label will no longer be recognized as a location.)
+  // The (?![a-zA-Z]) guard stops "L" from matching inside an unrelated word
+  // that merely starts with that letter (e.g. "Loading Dock", "Label 5") —
+  // it only counts as the prefix when "L" is followed by a separator, a
+  // digit, or the end of the text, never by another letter.
+  var LOCATION_PREFIX_RE = /^L(?![a-zA-Z])[\s:._-]*/i;
   function isLocationCode(text){
     return typeof text === 'string' && LOCATION_PREFIX_RE.test(text.trim());
   }
