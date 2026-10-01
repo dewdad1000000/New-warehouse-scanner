@@ -106,6 +106,7 @@
 
   /* ---------- scan action buttons ---------- */
   .scan-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;}
+  .scan-actions.single{grid-template-columns:1fr;margin-bottom:10px;}
   .action-btn{
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
     padding-block:20px;border-radius:16px;font-family:var(--font-display);
@@ -116,6 +117,23 @@
   .action-btn.outline{background:var(--surface);color:var(--text);}
   .action-btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
   .action-btn.primary:disabled{background:var(--surface);color:var(--text-dim);border-color:var(--border);}
+  .action-btn:disabled{opacity:.55;}
+  /* Remove Stock reuses the outline style but tints red so it reads as the
+     opposite of Add Stock (accent orange) at a glance. */
+  .action-btn.danger{border-color:rgba(239,83,80,.45);}
+  .action-btn.danger .action-icon{color:var(--bad);}
+  .action-btn.danger:disabled .action-icon{color:var(--text-dim);}
+
+  /* ---------- quantity prompt ---------- */
+  .qty-stepper{display:flex;align-items:center;justify-content:center;gap:14px;margin-block:8px;}
+  .qty-stepper .icon-btn{width:52px;height:52px;font-size:1.5rem;}
+  .qty-stepper input{
+    width:104px;text-align:center;font-family:var(--font-mono);font-size:1.7rem;font-weight:700;
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    border-radius:12px;padding:12px 6px;-moz-appearance:textfield;
+  }
+  .qty-stepper input::-webkit-outer-spin-button,
+  .qty-stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 
   .session-count{
     font-family:var(--font-mono);font-size:.8rem;color:var(--text-dim);
@@ -133,9 +151,11 @@
     padding:10px 12px;
   }
   .feed-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--text-dim);}
-  .feed-dot.good{background:var(--good);}
-  .feed-dot.pending{background:var(--accent);}
-  .feed-dot.bad{background:var(--bad);}
+  /* Every row shown here is already confirmed written to the Sheet (the
+     scanner only shows it after a successful server response), so the dot
+     now signals the action (Add vs. Remove) rather than a sync state. */
+  .feed-dot.add{background:var(--good);}
+  .feed-dot.remove{background:var(--accent);}
   .feed-main{flex:1;min-width:0;}
   .feed-item{font-family:var(--font-mono);font-size:.88rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .feed-sub{font-size:.76rem;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -144,9 +164,12 @@
     border:1px dashed var(--border);border-radius:12px;padding:20px 16px;text-align:center;line-height:1.5;
   }
 
-  /* ---------- overlays (name gate / settings) ---------- */
+  /* ---------- overlays (name gate / settings / quantity prompt) ---------- */
+  /* z-index 35 so the quantity-prompt overlay sits above the full-screen
+     viewfinder (30) — the other overlays (name gate, settings) never open
+     while the viewfinder is up, so raising this shared z-index is safe. */
   .overlay{
-    position:fixed;inset:0;z-index:20;
+    position:fixed;inset:0;z-index:35;
     background:rgba(10,13,16,.72);
     display:flex;align-items:flex-end;justify-content:center;
     padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));
@@ -296,8 +319,21 @@
         <input id="rosterInput" placeholder="Add a name" autocomplete="off" />
         <button type="submit">Add</button>
       </form>
+    </div>
+  </div>
 
-      <button id="retrySyncBtn" class="secondary-btn full">Retry unsynced scans</button>
+  <div id="qtyOverlay" class="overlay" hidden>
+    <div class="overlay-card">
+      <p class="eyebrow" id="qtyActionLabel">Add Stock</p>
+      <h1>How many units?</h1>
+      <p class="muted small">Code <span id="qtyProductCode" style="font-family:var(--font-mono);color:var(--text);font-weight:600;"></span> — <span id="qtyLocationName"></span></p>
+      <div class="qty-stepper">
+        <button id="qtyMinusBtn" class="icon-btn" type="button" aria-label="Decrease">−</button>
+        <input id="qtyInput" type="number" inputmode="numeric" min="1" step="1" value="1" />
+        <button id="qtyPlusBtn" class="icon-btn" type="button" aria-label="Increase">+</button>
+      </div>
+      <button id="qtyConfirmBtn" class="primary-btn full" type="button">Confirm</button>
+      <button id="qtyCancelBtn" class="secondary-btn full" type="button">Cancel — keep scanning</button>
     </div>
   </div>
 
@@ -321,14 +357,21 @@
       <button id="changeLocationBtn" class="ghost-btn" type="button" hidden>Change</button>
     </section>
 
-    <section class="scan-actions">
+    <section class="scan-actions single">
       <button id="scanLocationBtn" class="action-btn outline" type="button">
         <span class="action-icon">▦</span>
         <span>Scan Location</span>
       </button>
-      <button id="scanItemBtn" class="action-btn primary" type="button" disabled>
-        <span class="action-icon">▥</span>
-        <span>Scan Item</span>
+    </section>
+
+    <section class="scan-actions">
+      <button id="scanRemoveBtn" class="action-btn outline danger" type="button" disabled>
+        <span class="action-icon">−</span>
+        <span>Remove Stock</span>
+      </button>
+      <button id="scanAddBtn" class="action-btn primary" type="button" disabled>
+        <span class="action-icon">+</span>
+        <span>Add Stock</span>
       </button>
     </section>
 
@@ -377,39 +420,46 @@
   // and get a new URL.
   var DEFAULT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw8OXNIe5W92f7DNoobO9n6W-3Jfeu9xqmG3LVpi1iwzZ49hIwqybad6M6mg6f8XLFV8A/exec';
   var db = null;
-  var deviceId = getOrCreateDeviceId();
   var scannerName = localStorage.getItem('wh_scanner_name') || '';
   var activeLocation = localStorage.getItem('wh_active_location') || '';
-  var sessionLocationCount = 0;
+  // Units processed at the current location THIS SESSION (since the location
+  // was last scanned) — tracked separately for Add vs. Remove so the on-screen
+  // counters reflect actual units moved, not just how many codes were scanned.
+  var sessionAdded = 0;
+  var sessionRemoved = 0;
   var config = { webAppUrl: DEFAULT_WEB_APP_URL, scannerNames: [] };
   var feedPollTimer = null;
-  var currentMode = null; // 'location' | 'item'
+  var currentMode = null; // 'location' | 'add' | 'remove'
   var codeReader = null;
   var scanControls = null;
   var lastDecode = { text: '', time: 0 };
-  var localScans = []; // used only when db capability is unavailable
+  // pendingScan holds the product code + mode between a successful decode
+  // and the user confirming (or cancelling) the quantity prompt for it.
+  var pendingScan = null;
+  // Every event in the live feed below has already been confirmed written to
+  // the Sheet by the server (the scanner only shows it after a successful
+  // response) — there is no offline queue or retry-sync concept any more,
+  // since a scan can't be validated against the Products registry offline.
+  // localScans holds this phone's own just-submitted events so they appear
+  // instantly, before the next poll of the server's History tab catches up;
+  // lastServerRows holds the latest poll result. mergeFeed() combines them.
+  var localScans = [];
+  var lastServerRows = [];
 
   // ---------- element refs ----------
   var el = {};
   ['nameGate','nameChips','nameForm','nameInput',
    'settingsOverlay','settingsBtn','closeSettingsBtn','webAppUrlInput','connectionStatus','saveUrlBtn',
-   'rosterChips','rosterForm','rosterInput','retrySyncBtn',
+   'rosterChips','rosterForm','rosterInput',
    'whoBtn','locationBanner','locationLabel','locationCode','changeLocationBtn',
-   'scanLocationBtn','scanItemBtn','sessionCount',
+   'scanLocationBtn','scanAddBtn','scanRemoveBtn','sessionCount',
    'feedList','feedEmpty','feedMeta',
    'viewfinder','video','scanCaption','cancelScanBtn','scanFlash',
-   'vfLocationLabel','vfLocationName','vfCountBadge','scanCheck'
+   'vfLocationLabel','vfLocationName','vfCountBadge','scanCheck',
+   'qtyOverlay','qtyActionLabel','qtyProductCode','qtyLocationName','qtyInput','qtyMinusBtn','qtyPlusBtn','qtyConfirmBtn','qtyCancelBtn'
   ].forEach(function(id){ el[id] = document.getElementById(id); });
 
   // ---------- helpers ----------
-  function getOrCreateDeviceId(){
-    try {
-      var id = localStorage.getItem('wh_device_id');
-      if (!id) { id = 'dev-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('wh_device_id', id); }
-      return id;
-    } catch(e) { return 'dev-' + Date.now(); }
-  }
-
   function toast(msg){
     var t = document.createElement('div');
     t.className = 'toast';
@@ -452,20 +502,25 @@
       el.locationLabel.textContent = 'Scanning into';
       el.locationCode.textContent = activeLocation;
       el.changeLocationBtn.hidden = false;
-      el.scanItemBtn.disabled = false;
+      el.scanAddBtn.disabled = false;
+      el.scanRemoveBtn.disabled = false;
     } else {
       el.locationBanner.classList.add('is-empty');
       el.locationLabel.textContent = 'No location set';
       el.locationCode.textContent = 'Scan a location QR to begin';
       el.changeLocationBtn.hidden = true;
-      el.scanItemBtn.disabled = true;
+      el.scanAddBtn.disabled = true;
+      el.scanRemoveBtn.disabled = true;
     }
     renderSessionCount();
   }
   function renderSessionCount(){
-    if (activeLocation && sessionLocationCount > 0) {
+    if (activeLocation && (sessionAdded > 0 || sessionRemoved > 0)) {
+      var parts = [];
+      if (sessionAdded > 0) parts.push(sessionAdded + ' added');
+      if (sessionRemoved > 0) parts.push(sessionRemoved + ' removed');
       el.sessionCount.hidden = false;
-      el.sessionCount.textContent = sessionLocationCount + ' item' + (sessionLocationCount === 1 ? '' : 's') + ' scanned into this location this session';
+      el.sessionCount.textContent = parts.join(' · ') + ' at ' + activeLocation + ' this session';
     } else {
       el.sessionCount.hidden = true;
     }
@@ -564,107 +619,35 @@
     }
   });
 
-  el.retrySyncBtn.addEventListener('click', function(){
-    el.retrySyncBtn.disabled = true;
-    el.retrySyncBtn.textContent = 'Retrying…';
-    retryAllPending().then(function(count){
-      el.retrySyncBtn.disabled = false;
-      el.retrySyncBtn.textContent = 'Retry unsynced scans';
-      toast(count ? ('Retried ' + count + ' scan' + (count===1?'':'s')) : 'Nothing pending');
-    });
-  });
-
-  // ---------- sync ----------
-  function makeLocalRef(scanObj){
-    return {
-      update: function(patch){
-        Object.assign(scanObj, patch);
-        renderFeed(localScans);
-        return Promise.resolve();
-      }
+  // ---------- submitting an add/remove event ----------
+  // Unlike the old per-item model, this always has to go straight to the
+  // server: only the Sheet's "Products" tab knows whether a code is really
+  // registered, so there's no safe way to accept a scan optimistically and
+  // sync it later. The quantity-prompt Confirm button awaits this directly.
+  function submitScanEvent(mode, productCode, quantity){
+    var action = mode === 'add' ? 'add' : 'remove';
+    var payload = {
+      productCode: productCode, location: activeLocation, action: action,
+      quantity: quantity, scannedBy: scannerName || 'Unknown', timestamp: Date.now()
     };
-  }
-
-  function trySync(ref, scan){
-    if (!config.webAppUrl) return Promise.resolve(false);
+    if (!config.webAppUrl) {
+      return Promise.resolve({ ok: false, error: 'not_connected', message: 'No Google Sheet connected yet — add the connection in Settings.' });
+    }
     return fetch(config.webAppUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({
-        itemId: scan.itemId, location: scan.location,
-        scannedBy: scan.scannedBy, timestamp: scan.timestamp
-      })
-    }).then(function(res){
-      if (res && res.ok) { return ref.update({ synced: true }).then(function(){ return true; }); }
-      return ref.update({ syncAttempts: (scan.syncAttempts||0) + 1 }).then(function(){ return false; });
-    }).catch(function(){
-      return ref.update({ syncAttempts: (scan.syncAttempts||0) + 1 }).then(function(){ return false; }).catch(function(){ return false; });
-    });
+      body: JSON.stringify(payload)
+    }).then(function(res){ return res.json(); })
+      .then(function(data){ return data || { ok: false, error: 'bad_response', message: 'Unexpected response from your Google Sheet.' }; })
+      .catch(function(){ return { ok: false, error: 'network', message: 'Could not reach your Google Sheet — check your connection and try scanning that code again.' }; });
   }
 
-  function retryOwnPending(){
-    if (!db || !config.webAppUrl) return;
-    db.collection('scans').where('createdBy','==',deviceId).where('synced','==',false).limit(20).get()
-      .then(function(snap){
-        snap.docs.forEach(function(docSnap){
-          var ref = db.collection('scans').doc(docSnap.id);
-          trySync(ref, docSnap.data());
-        });
-      }).catch(function(){});
-  }
-
-  function retryAllPending(){
-    if (!config.webAppUrl) return Promise.resolve(0);
-    if (db) {
-      return db.collection('scans').where('synced','==',false).limit(50).get().then(function(snap){
-        var jobs = snap.docs.map(function(docSnap){
-          var ref = db.collection('scans').doc(docSnap.id);
-          return trySync(ref, docSnap.data());
-        });
-        return Promise.all(jobs).then(function(){ return snap.docs.length; });
-      }).catch(function(){ return 0; });
-    } else {
-      var pending = localScans.filter(function(s){ return !s.synced; });
-      var jobs = pending.map(function(s){ return trySync(makeLocalRef(s), s); });
-      return Promise.all(jobs).then(function(){ return pending.length; });
-    }
-  }
-
-  function cleanupOldScans(){
-    if (!db) return;
-    var cutoff = Date.now() - 24*60*60*1000;
-    db.collection('scans').where('synced','==',true).orderBy('timestamp','asc').limit(50).get()
-      .then(function(snap){
-        snap.docs.forEach(function(docSnap){
-          var data = docSnap.data();
-          if (data.timestamp && data.timestamp < cutoff) {
-            db.collection('scans').doc(docSnap.id).delete().catch(function(){});
-          }
-        });
-      }).catch(function(){});
-  }
-
-  // ---------- recording a scan ----------
-  function recordScan(itemId, location){
-    var scan = {
-      itemId: itemId, location: location, scannedBy: scannerName || 'Unknown',
-      timestamp: Date.now(), synced: false, createdBy: deviceId, syncAttempts: 0
-    };
-    if (db) {
-      db.collection('scans').add(scan).then(function(ref){
-        trySync(ref, scan);
-      }).catch(function(){
-        // db add failed — still keep it visible locally and try to sync
-        localScans.unshift(scan);
-        renderFeed(localScans);
-        trySync(makeLocalRef(scan), scan);
-      });
-    } else {
-      localScans.unshift(scan);
-      if (localScans.length > 30) localScans.length = 30;
-      renderFeed(localScans);
-      trySync(makeLocalRef(scan), scan);
-    }
+  // Shows this phone's own just-confirmed event in the live feed immediately,
+  // ahead of the next poll of the server's History tab (see mergeFeed below).
+  function recordLocalEvent(evt){
+    localScans.unshift(evt);
+    if (localScans.length > 30) localScans.length = 30;
+    renderFeed(mergeFeed());
   }
 
   // ---------- live feed ----------
@@ -678,53 +661,71 @@
     el.feedEmpty.hidden = true;
     el.feedMeta.textContent = list.length + ' recent';
     el.feedList.innerHTML = '';
-    list.forEach(function(scan){
+    list.forEach(function(evt){
       var li = document.createElement('li');
       li.className = 'feed-row';
-      var dotClass = scan.synced ? 'good' : (scan.syncAttempts > 2 ? 'bad' : 'pending');
+      var isAdd = evt.action === 'add';
       li.innerHTML =
-        '<span class="feed-dot ' + dotClass + '"></span>' +
+        '<span class="feed-dot ' + (isAdd ? 'add' : 'remove') + '"></span>' +
         '<span class="feed-main">' +
           '<div class="feed-item"></div>' +
           '<div class="feed-sub"></div>' +
         '</span>' +
         '<span class="feed-time"></span>';
-      li.querySelector('.feed-item').textContent = scan.itemId;
-      li.querySelector('.feed-sub').textContent = '→ ' + scan.location + ' · ' + scan.scannedBy;
-      li.querySelector('.feed-time').textContent = relTime(scan.timestamp);
+      li.querySelector('.feed-item').textContent = (isAdd ? '+' : '−') + evt.quantity + ' ' + (evt.productName || evt.productCode);
+      li.querySelector('.feed-sub').textContent = (isAdd ? 'Added to ' : 'Removed from ') + evt.location + ' · ' + evt.scannedBy;
+      li.querySelector('.feed-time').textContent = relTime(evt.timestamp);
       el.feedList.appendChild(li);
     });
   }
 
-  function subscribeScans(){
-    db.collection('scans').orderBy('timestamp','desc').limit(30).onSnapshot(
-      function(snap){
-        var list = snap.docs.map(function(d){ var data = d.data(); data.id = d.id; return data; });
-        renderFeed(list);
-      },
-      function(){ /* degrade silently, local recordScan path still renders */ }
-    );
+  // Combines this phone's own just-submitted events (shown instantly) with
+  // the latest poll of the server's History tab (shown for every phone),
+  // de-duplicating an event once the poll catches up to it. Two events are
+  // treated as "the same" when they share product, action, quantity,
+  // location and scanner, and happened within the same ~10-second window —
+  // close enough that this phone's own optimistic echo and the server's
+  // eventual record of that same event will always match.
+  function feedKey(evt){
+    return [evt.productCode, evt.action, evt.quantity, evt.location, evt.scannedBy, Math.round(evt.timestamp / 10000)].join('|');
+  }
+  function mergeFeed(){
+    var byKey = {};
+    lastServerRows.forEach(function(evt){ byKey[feedKey(evt)] = evt; });
+    localScans.forEach(function(evt){
+      var k = feedKey(evt);
+      if (!byKey[k]) byKey[k] = evt;
+    });
+    var out = [];
+    for (var k in byKey) { if (byKey.hasOwnProperty(k)) out.push(byKey[k]); }
+    out.sort(function(a,b){ return b.timestamp - a.timestamp; });
+    return out.slice(0, 30);
+  }
+  function pruneLocalScans(){
+    var cutoff = Date.now() - 60000;
+    localScans = localScans.filter(function(evt){ return evt.timestamp >= cutoff; });
   }
 
-  // Used instead of subscribeScans() when the shared live-sync store isn't
-  // available (e.g. running outside claude.ai, such as on GitHub Pages) —
-  // pulls the shared "live" feed straight from the Sheet's History tab, so
-  // every phone still sees everyone's scans, just on a short delay instead
-  // of instantly.
+  // Pulls the shared "live" feed straight from the Sheet's History tab (via
+  // Code.gs's ?action=recent), so every phone sees everyone's scans within a
+  // few seconds — the Sheet itself is already updated instantly by doPost,
+  // this is just how the phones' own activity list catches up to it.
   function pollFeed(){
-    if (!config.webAppUrl) { renderFeed(localScans); return; }
+    if (!config.webAppUrl) { renderFeed(mergeFeed()); return; }
     fetch(config.webAppUrl + '?action=recent&limit=25')
       .then(function(res){ return res.json(); })
       .then(function(data){
-        var serverRows = (data && data.recent) ? data.recent.map(function(r){
-          return { itemId: r.itemId, location: r.location, scannedBy: r.scannedBy, timestamp: r.timestamp, synced: true };
+        lastServerRows = (data && data.recent) ? data.recent.map(function(r){
+          return {
+            productCode: r.productCode, productName: r.productName,
+            action: String(r.action || '').toLowerCase(), quantity: r.quantity,
+            location: r.location, scannedBy: r.scannedBy, timestamp: r.timestamp
+          };
         }) : [];
-        var pendingLocal = localScans.filter(function(s){ return !s.synced; });
-        var merged = pendingLocal.concat(serverRows);
-        merged.sort(function(a,b){ return b.timestamp - a.timestamp; });
-        renderFeed(merged.slice(0, 30));
+        pruneLocalScans();
+        renderFeed(mergeFeed());
       })
-      .catch(function(){ renderFeed(localScans); });
+      .catch(function(){ renderFeed(mergeFeed()); });
   }
 
   function startFeedPolling(){
@@ -869,9 +870,12 @@
 
   function renderViewfinderHeader(){
     el.vfLocationName.textContent = activeLocation || '—';
-    if (currentMode === 'item' && sessionLocationCount > 0) {
+    if (currentMode === 'add' && sessionAdded > 0) {
       el.vfCountBadge.hidden = false;
-      el.vfCountBadge.textContent = sessionLocationCount + ' scanned';
+      el.vfCountBadge.textContent = sessionAdded + ' added';
+    } else if (currentMode === 'remove' && sessionRemoved > 0) {
+      el.vfCountBadge.hidden = false;
+      el.vfCountBadge.textContent = sessionRemoved + ' removed';
     } else {
       el.vfCountBadge.hidden = true;
     }
@@ -891,8 +895,10 @@
     currentMode = mode;
     el.scanCaption.textContent = mode === 'location'
       ? 'Point at the location QR code'
-      : ('Scanning into ' + activeLocation + ' — point at an item barcode. Keep going — no need to close this.');
-    el.cancelScanBtn.textContent = mode === 'item' ? 'Done' : 'Cancel';
+      : (mode === 'add'
+          ? ('Adding stock at ' + activeLocation + ' — point at a product QR code.')
+          : ('Removing stock at ' + activeLocation + ' — point at a product QR code.'));
+    el.cancelScanBtn.textContent = mode === 'location' ? 'Cancel' : 'Done';
     el.viewfinder.hidden = false;
     renderViewfinderHeader();
     reader.decodeFromConstraints(
@@ -954,6 +960,86 @@
     currentMode = null;
   }
 
+  // Stops the camera stream without hiding the viewfinder's own hidden-state
+  // bookkeeping any further than that — used right before the quantity
+  // prompt takes over, so no stray decode fires while the user is typing.
+  function pauseScan(){
+    if (scanControls) { try { scanControls.stop(); } catch(e){} scanControls = null; }
+    codeReader = null;
+  }
+
+  // ---------- quantity prompt (Add/Remove) ----------
+  function openQuantityPrompt(mode, productCode){
+    pauseScan();
+    pendingScan = { mode: mode, productCode: productCode };
+    el.qtyActionLabel.textContent = mode === 'add' ? 'Add Stock' : 'Remove Stock';
+    el.qtyProductCode.textContent = productCode;
+    el.qtyLocationName.textContent = activeLocation;
+    el.qtyInput.value = '1';
+    el.qtyConfirmBtn.disabled = false;
+    el.qtyConfirmBtn.textContent = 'Confirm';
+    el.viewfinder.hidden = true;
+    el.qtyOverlay.hidden = false;
+    setTimeout(function(){ try { el.qtyInput.focus(); el.qtyInput.select(); } catch(e){} }, 30);
+  }
+
+  function closeQuantityPrompt(){
+    el.qtyOverlay.hidden = true;
+    pendingScan = null;
+  }
+
+  function stepQuantity(delta){
+    var n = parseInt(el.qtyInput.value, 10);
+    if (!Number.isFinite(n)) n = 1;
+    n = Math.max(1, n + delta);
+    el.qtyInput.value = String(n);
+  }
+
+  el.qtyMinusBtn.addEventListener('click', function(){ stepQuantity(-1); });
+  el.qtyPlusBtn.addEventListener('click', function(){ stepQuantity(1); });
+
+  el.qtyCancelBtn.addEventListener('click', function(){
+    var mode = pendingScan ? pendingScan.mode : (currentMode || 'add');
+    closeQuantityPrompt();
+    startScan(mode);
+  });
+
+  el.qtyConfirmBtn.addEventListener('click', function(){
+    if (!pendingScan) return;
+    var n = parseInt(el.qtyInput.value, 10);
+    if (!Number.isFinite(n) || n < 1) { toast('Enter a quantity of at least 1'); return; }
+    var mode = pendingScan.mode;
+    var productCode = pendingScan.productCode;
+    el.qtyConfirmBtn.disabled = true;
+    el.qtyConfirmBtn.textContent = 'Saving…';
+    submitScanEvent(mode, productCode, n).then(function(resp){
+      closeQuantityPrompt();
+      // Resume scanning immediately either way — a rejected or failed scan
+      // just means the user tries again (same code or a different one),
+      // never a dead end that needs Done + Scan again to recover from.
+      startScan(mode);
+      if (resp && resp.ok) {
+        flashOk();
+        vibrate(60);
+        playBeep();
+        if (mode === 'add') { sessionAdded += n; } else { sessionRemoved += n; }
+        renderSessionCount();
+        var label = resp.productName || productCode;
+        recordLocalEvent({
+          productCode: productCode, productName: resp.productName || '',
+          action: mode, quantity: n, location: activeLocation,
+          scannedBy: scannerName || 'Unknown', timestamp: Date.now()
+        });
+        toast((mode === 'add' ? '+' : '−') + n + ' ' + label + ' — now ' + resp.newQuantity + ' at ' + activeLocation);
+      } else {
+        flashBad();
+        vibrate([40, 70, 40]);
+        playErrorBeep();
+        toast((resp && resp.message) || 'Could not save that scan — try again.');
+      }
+    });
+  });
+
   function handleDecode(text){
     var now = Date.now();
     if (text === lastDecode.text && now - lastDecode.time < 2000) return;
@@ -969,46 +1055,42 @@
       }
       activeLocation = stripLocationPrefix(text);
       try { localStorage.setItem('wh_active_location', activeLocation); } catch(e) {}
-      sessionLocationCount = 0;
+      sessionAdded = 0;
+      sessionRemoved = 0;
       vibrate(70);
       flashOk();
       playBeep();
       renderLocation();
       setTimeout(stopScan, 220);
-    } else if (currentMode === 'item') {
+    } else if (currentMode === 'add' || currentMode === 'remove') {
       if (!activeLocation) return;
       if (isLocationCode(text)) {
         vibrate([40, 70, 40]);
         flashBad();
         playErrorBeep();
-        restartScan('item', '⚠ That was a location code, not an item — scan an item next.');
+        restartScan(currentMode, '⚠ That was a location code — scan a product code instead.');
         return;
       }
-      vibrate(50);
+      vibrate(40);
       flashOk();
-      playBeep();
-      sessionLocationCount++;
-      renderSessionCount();
-      recordScan(text, activeLocation);
-      // Camera restarts fresh for the next item (see restartScan) — this
-      // caption is the only feedback visible while the viewfinder covers
-      // the rest of the app, so make it obvious the scan landed and the
-      // next item can go right away.
-      restartScan('item', '✓ ' + text + ' — ' + sessionLocationCount +
-        ' scanned into ' + activeLocation + '. Keep scanning, or tap Done.');
+      // Pause here and ask how many units — doesn't record anything or
+      // validate the code against the Products registry until the quantity
+      // is confirmed (see the qtyConfirmBtn handler above).
+      openQuantityPrompt(currentMode, text);
     }
   }
 
   el.scanLocationBtn.addEventListener('click', function(){ ensureAudio(); startScan('location'); });
   el.changeLocationBtn.addEventListener('click', function(){ ensureAudio(); startScan('location'); });
-  el.scanItemBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanItemBtn.disabled) startScan('item'); });
+  el.scanAddBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanAddBtn.disabled) startScan('add'); });
+  el.scanRemoveBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanRemoveBtn.disabled) startScan('remove'); });
   el.cancelScanBtn.addEventListener('click', stopScan);
 
   // ---------- boot ----------
   function boot(){
     renderWho();
     renderLocation();
-    renderFeed(localScans);
+    renderFeed(mergeFeed());
 
     if (window.claude && typeof window.claude.use === 'function') {
       window.claude.use('db').then(function(ns){
@@ -1037,9 +1119,10 @@
             }
           });
 
-          subscribeScans();
-          setInterval(cleanupOldScans, 10 * 60 * 1000);
-          setInterval(retryOwnPending, 15000);
+          // Scans themselves always live in the Sheet, not in any shared
+          // live-sync store, so the feed is always built by polling the
+          // Sheet's History tab regardless of whether `db` is available.
+          startFeedPolling();
         } else {
           loadLocalConfig();
           renderNameChips();
