@@ -752,10 +752,27 @@
           // it internally — it isn't exposed on the public ZXingBrowser
           // global, so it's hardcoded here rather than referenced by
           // name; verified directly against this version's own source.
+          //
+          // POSSIBLE_FORMATS (hint ID 2) restricts the decoder to ONLY
+          // QR codes (BarcodeFormat.QR_CODE = 11 in this pinned version's
+          // own source — same reason it's a bare number, not a name).
+          // Both every location label and every item label are QR codes
+          // now, so there's no reason to also recognize the dozen-plus
+          // other 1D/2D formats this library supports by default — doing
+          // so was letting the scanner misread ordinary screen content
+          // (text edges, icons, UI patterns) as a barcode when the camera
+          // happened to be pointed at a monitor, recording bogus "items"
+          // that were never actually scanned. Narrowing to just QR_CODE
+          // removes nearly all of that false-positive surface, since a
+          // QR code's finder pattern (the three corner squares) is very
+          // distinctive and not something ordinary screen content will
+          // accidentally resemble.
           // If the pinned version in the <script> tag below is ever
-          // changed, re-verify this still means TRY_HARDER.
+          // changed, re-verify both of these numeric IDs still mean what
+          // this comment says.
           var hints = new Map();
           hints.set(3, true);
+          hints.set(2, [11]);
           codeReader = new ZXingBrowser.BrowserMultiFormatReader(hints, {
             // Tighter loop than the library default (500ms/500ms) so the
             // next barcode is picked up quickly once one's in frame.
