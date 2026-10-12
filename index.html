@@ -156,6 +156,7 @@
      now signals the action (Add vs. Remove) rather than a sync state. */
   .feed-dot.add{background:var(--good);}
   .feed-dot.remove{background:var(--accent);}
+  .feed-dot.move{background:#7aa2f7;}
   .feed-main{flex:1;min-width:0;}
   .feed-item{font-family:var(--font-mono);font-size:.88rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .feed-sub{font-size:.76rem;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -423,6 +424,13 @@
       </button>
     </section>
 
+    <section class="scan-actions single">
+      <button id="scanMoveBtn" class="action-btn outline" type="button" disabled>
+        <span class="action-icon">⇄</span>
+        <span>Move Stock</span>
+      </button>
+    </section>
+
     <p class="session-count" id="sessionCount" hidden></p>
 
     <section class="feed">
@@ -496,6 +504,13 @@
   // pendingScan holds the product code + mode between a successful decode
   // and the user confirming (or cancelling) the quantity prompt for it.
   var pendingScan = null;
+  // pendingMove holds {productCode, quantity, fromLocation} for a Move
+  // Stock in progress, between the quantity prompt being confirmed and the
+  // destination location actually being scanned (see performMove below) —
+  // a move needs this extra step beyond pendingScan's single decode/confirm
+  // round trip. Cleared by stopScan() so cancelling out of the destination
+  // scan never leaves a stale move hanging around.
+  var pendingMove = null;
   // Every event in the live feed below has already been confirmed written to
   // the Sheet by the server (the scanner only shows it after a successful
   // response) — there is no offline queue or retry-sync concept any more,
@@ -512,7 +527,7 @@
    'settingsOverlay','settingsBtn','closeSettingsBtn','webAppUrlInput','connectionStatus','saveUrlBtn',
    'rosterChips','rosterForm','rosterInput',
    'whoBtn','locationBanner','locationLabel','locationCode','changeLocationBtn',
-   'scanLocationBtn','scanAddBtn','scanRemoveBtn','sessionCount',
+   'scanLocationBtn','scanAddBtn','scanRemoveBtn','scanMoveBtn','sessionCount',
    'feedList','feedEmpty','feedMeta',
    'viewfinder','video','scanCaption','cancelScanBtn','scanFlash','switchCameraBtn',
    'vfLocationLabel','vfLocationName','vfCountBadge','scanCheck',
@@ -567,6 +582,7 @@
       el.changeLocationBtn.hidden = false;
       el.scanAddBtn.disabled = false;
       el.scanRemoveBtn.disabled = false;
+      el.scanMoveBtn.disabled = false;
     } else {
       el.locationBanner.classList.add('is-empty');
       el.locationLabel.textContent = 'No location set';
@@ -574,6 +590,7 @@
       el.changeLocationBtn.hidden = true;
       el.scanAddBtn.disabled = true;
       el.scanRemoveBtn.disabled = true;
+      el.scanMoveBtn.disabled = true;
     }
     renderSessionCount();
   }
@@ -800,6 +817,29 @@
       .catch(function(){ return { ok: false, error: 'network', message: 'Could not reach your Google Sheet — check your connection and try scanning that code again.' }; });
   }
 
+  // ---------- submitting a move ----------
+  // Mirrors submitScanEvent above, but hits op: 'moveStock' so Code.gs does
+  // the Remove-at-origin + Add-at-destination as one atomic step under the
+  // same script lock, instead of this being two separate requests that could
+  // leave a move only half-done if the second one failed.
+  function submitMoveStock(productCode, fromLocation, toLocation, quantity){
+    var payload = {
+      op: 'moveStock',
+      productCode: productCode, fromLocation: fromLocation, toLocation: toLocation,
+      quantity: quantity, scannedBy: scannerName || 'Unknown', timestamp: Date.now()
+    };
+    if (!config.webAppUrl) {
+      return Promise.resolve({ ok: false, error: 'not_connected', message: 'No Google Sheet connected yet — add the connection in Settings.' });
+    }
+    return fetch(config.webAppUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    }).then(function(res){ return res.json(); })
+      .then(function(data){ return data || { ok: false, error: 'bad_response', message: 'Unexpected response from your Google Sheet.' }; })
+      .catch(function(){ return { ok: false, error: 'network', message: 'Could not reach your Google Sheet — check your connection and try scanning that code again.' }; });
+  }
+
   // Shows this phone's own just-confirmed event in the live feed immediately,
   // ahead of the next poll of the server's History tab (see mergeFeed below).
   function recordLocalEvent(evt){
@@ -822,16 +862,27 @@
     list.forEach(function(evt){
       var li = document.createElement('li');
       li.className = 'feed-row';
+      // Move Out / Move In are logged as two History rows (see Code.gs), not
+      // a boolean add/remove — give them their own dot color and wording so
+      // they don't show up looking like an unrelated Add or Remove.
+      var isMoveOut = evt.action === 'move out';
+      var isMoveIn = evt.action === 'move in';
       var isAdd = evt.action === 'add';
+      var dotClass = (isMoveOut || isMoveIn) ? 'move' : (isAdd ? 'add' : 'remove');
+      var sign = (isAdd || isMoveIn) ? '+' : '−';
+      var subText;
+      if (isMoveOut) { subText = 'Moved from ' + evt.location + ' · ' + evt.scannedBy; }
+      else if (isMoveIn) { subText = 'Moved to ' + evt.location + ' · ' + evt.scannedBy; }
+      else { subText = (isAdd ? 'Added to ' : 'Removed from ') + evt.location + ' · ' + evt.scannedBy; }
       li.innerHTML =
-        '<span class="feed-dot ' + (isAdd ? 'add' : 'remove') + '"></span>' +
+        '<span class="feed-dot ' + dotClass + '"></span>' +
         '<span class="feed-main">' +
           '<div class="feed-item"></div>' +
           '<div class="feed-sub"></div>' +
         '</span>' +
         '<span class="feed-time"></span>';
-      li.querySelector('.feed-item').textContent = (isAdd ? '+' : '−') + evt.quantity + ' ' + (evt.productName || evt.productCode);
-      li.querySelector('.feed-sub').textContent = (isAdd ? 'Added to ' : 'Removed from ') + evt.location + ' · ' + evt.scannedBy;
+      li.querySelector('.feed-item').textContent = sign + evt.quantity + ' ' + (evt.productName || evt.productCode);
+      li.querySelector('.feed-sub').textContent = subText;
       li.querySelector('.feed-time').textContent = relTime(evt.timestamp);
       el.feedList.appendChild(li);
     });
@@ -1054,11 +1105,7 @@
     var reader = getReader();
     if (!reader) { toast('Scanning library failed to load — refresh the page'); return; }
     currentMode = mode;
-    el.scanCaption.textContent = mode === 'location'
-      ? 'Point at the location QR code'
-      : (mode === 'add'
-          ? ('Adding stock at ' + activeLocation + ' — point at a product QR code.')
-          : ('Removing stock at ' + activeLocation + ' — point at a product QR code.'));
+    el.scanCaption.textContent = scanCaptionFor(mode);
     el.cancelScanBtn.textContent = mode === 'location' ? 'Cancel' : 'Done';
     el.viewfinder.hidden = false;
     renderViewfinderHeader();
@@ -1090,6 +1137,20 @@
       toast(cameraErrorMessage(err));
       stopScan();
     });
+  }
+
+  // The caption shown above the camera view for each scan mode. Pulled out
+  // of startScan into its own function since there are now five modes
+  // (location, add, remove, move, move-destination) rather than three.
+  function scanCaptionFor(mode){
+    switch (mode) {
+      case 'location': return 'Point at the location QR code';
+      case 'add': return 'Adding stock at ' + activeLocation + ' — point at a product QR code.';
+      case 'remove': return 'Removing stock at ' + activeLocation + ' — point at a product QR code.';
+      case 'move': return 'Moving stock from ' + activeLocation + ' — point at a product QR code.';
+      case 'move-destination': return 'Now point at the DESTINATION location\'s QR code.';
+      default: return '';
+    }
   }
 
   // Picks which camera to request. Most phones only ever hit the first
@@ -1160,6 +1221,10 @@
     if (scanControls) { try { scanControls.stop(); } catch(e){} scanControls = null; }
     el.viewfinder.hidden = true;
     currentMode = null;
+    // Cancelling out of a Move Stock flow at any point (including the
+    // destination-scan step) should drop the pending move entirely rather
+    // than leave it around for some later scan to accidentally pick up.
+    pendingMove = null;
   }
 
   // Stops the camera stream without hiding the viewfinder's own hidden-state
@@ -1170,16 +1235,18 @@
     codeReader = null;
   }
 
-  // ---------- quantity prompt (Add/Remove) ----------
+  // ---------- quantity prompt (Add/Remove/Move) ----------
   function openQuantityPrompt(mode, productCode){
     pauseScan();
     pendingScan = { mode: mode, productCode: productCode };
-    el.qtyActionLabel.textContent = mode === 'add' ? 'Add Stock' : 'Remove Stock';
+    el.qtyActionLabel.textContent = mode === 'add' ? 'Add Stock' : (mode === 'remove' ? 'Remove Stock' : 'Move Stock');
     el.qtyProductCode.textContent = productCode;
-    el.qtyLocationName.textContent = activeLocation;
+    // For a move, this is the location it's coming FROM — the destination
+    // isn't known yet (that's the next step, after Confirm below).
+    el.qtyLocationName.textContent = mode === 'move' ? ('moving from ' + activeLocation) : activeLocation;
     el.qtyInput.value = '1';
     el.qtyConfirmBtn.disabled = false;
-    el.qtyConfirmBtn.textContent = 'Confirm';
+    el.qtyConfirmBtn.textContent = mode === 'move' ? 'Next: Scan Destination' : 'Confirm';
     el.viewfinder.hidden = true;
     el.qtyOverlay.hidden = false;
     setTimeout(function(){ try { el.qtyInput.focus(); el.qtyInput.select(); } catch(e){} }, 30);
@@ -1212,6 +1279,15 @@
     if (!Number.isFinite(n) || n < 1) { toast('Enter a quantity of at least 1'); return; }
     var mode = pendingScan.mode;
     var productCode = pendingScan.productCode;
+    if (mode === 'move') {
+      // The quantity and origin are locked in, but a move isn't submitted
+      // yet — the destination location still has to be scanned (see the
+      // 'move-destination' branch in handleDecode and performMove below).
+      pendingMove = { productCode: productCode, quantity: n, fromLocation: activeLocation };
+      closeQuantityPrompt();
+      startScan('move-destination');
+      return;
+    }
     el.qtyConfirmBtn.disabled = true;
     el.qtyConfirmBtn.textContent = 'Saving…';
     submitScanEvent(mode, productCode, n).then(function(resp){
@@ -1264,7 +1340,7 @@
       playBeep();
       renderLocation();
       setTimeout(stopScan, 220);
-    } else if (currentMode === 'add' || currentMode === 'remove') {
+    } else if (currentMode === 'add' || currentMode === 'remove' || currentMode === 'move') {
       if (!activeLocation) return;
       if (isLocationCode(text)) {
         vibrate([40, 70, 40]);
@@ -1277,15 +1353,94 @@
       flashOk();
       // Pause here and ask how many units — doesn't record anything or
       // validate the code against the Products registry until the quantity
-      // is confirmed (see the qtyConfirmBtn handler above).
+      // is confirmed (see the qtyConfirmBtn handler above). For a move, this
+      // is only the FIRST half — the destination still has to be scanned
+      // (see 'move-destination' below) before anything is actually submitted.
       openQuantityPrompt(currentMode, text);
+    } else if (currentMode === 'move-destination') {
+      if (!pendingMove) { stopScan(); return; }
+      if (!isLocationCode(text)) {
+        vibrate([40, 70, 40]);
+        flashBad();
+        playErrorBeep();
+        restartScan('move-destination', '⚠ That\'s not a location code — scan the destination shelf\'s QR code.');
+        return;
+      }
+      var destination = stripLocationPrefix(text);
+      if (destination === pendingMove.fromLocation) {
+        vibrate([40, 70, 40]);
+        flashBad();
+        playErrorBeep();
+        restartScan('move-destination', '⚠ That\'s the same location it\'s moving from — scan a different one.');
+        return;
+      }
+      vibrate(40);
+      flashOk();
+      performMove(destination);
     }
+  }
+
+  // ---------- completing a move ----------
+  // Called once both halves of a move are known: pendingMove (product,
+  // quantity, origin — set by the qtyConfirmBtn handler) and the destination
+  // just scanned above. Submits both as one request (see submitMoveStock /
+  // handleMoveStock_ in Code.gs) rather than a separate Remove and Add.
+  function performMove(destination){
+    var move = pendingMove;
+    if (!move) { stopScan(); return; }
+    el.scanCaption.textContent = 'Saving move…';
+    submitMoveStock(move.productCode, move.fromLocation, destination, move.quantity).then(function(resp){
+      pendingMove = null;
+      if (resp && resp.ok) {
+        flashOk();
+        vibrate(60);
+        playBeep();
+        var label = resp.productName || move.productCode;
+        var moved = (typeof resp.movedQuantity === 'number') ? resp.movedQuantity : move.quantity;
+        var now = Date.now();
+        // Two feed entries, same as the two History rows Code.gs writes —
+        // one for the location it left, one for the location it landed in.
+        recordLocalEvent({
+          productCode: move.productCode, productName: resp.productName || '',
+          action: 'move out', quantity: moved, location: move.fromLocation,
+          scannedBy: scannerName || 'Unknown', timestamp: now
+        });
+        recordLocalEvent({
+          productCode: move.productCode, productName: resp.productName || '',
+          action: 'move in', quantity: moved, location: destination,
+          scannedBy: scannerName || 'Unknown', timestamp: now + 1
+        });
+        // Per Steve: after a move, treat the destination as "where you are
+        // now" rather than snapping back to the origin.
+        activeLocation = destination;
+        try { localStorage.setItem('wh_active_location', activeLocation); } catch(e) {}
+        sessionAdded = 0;
+        sessionRemoved = 0;
+        renderLocation();
+        stopScan();
+        var msg = 'Moved ' + moved + ' ' + label + ' to ' + destination;
+        if (typeof resp.requestedQuantity === 'number' && resp.requestedQuantity > moved) {
+          msg += ' (only ' + moved + ' of the ' + resp.requestedQuantity + ' requested were there to move)';
+        }
+        toast(msg);
+      } else {
+        flashBad();
+        vibrate([40, 70, 40]);
+        playErrorBeep();
+        toast((resp && resp.message) || 'Could not save that move — try scanning the destination again.');
+        // Keep the move pending and let the user rescan the destination —
+        // re-scanning the product from scratch isn't needed, only this step.
+        pendingMove = move;
+        restartScan('move-destination', scanCaptionFor('move-destination'));
+      }
+    });
   }
 
   el.scanLocationBtn.addEventListener('click', function(){ ensureAudio(); startScan('location'); });
   el.changeLocationBtn.addEventListener('click', function(){ ensureAudio(); startScan('location'); });
   el.scanAddBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanAddBtn.disabled) startScan('add'); });
   el.scanRemoveBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanRemoveBtn.disabled) startScan('remove'); });
+  el.scanMoveBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanMoveBtn.disabled) startScan('move'); });
   el.cancelScanBtn.addEventListener('click', stopScan);
   el.switchCameraBtn.addEventListener('click', function(){
     if (!availableCameras.length) return;
