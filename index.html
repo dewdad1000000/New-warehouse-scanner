@@ -278,6 +278,17 @@
   .scan-flash.on{opacity:1;transition:none;}
   .scan-flash.bad{background:rgba(239,83,80,.34);}
 
+  /* Only shown once we know the phone actually has more than one rear
+     camera to offer (see refreshAvailableCameras) — most phones never see
+     this button at all. Overlaid on the live video, top-right, out of the
+     way of the reticle in the middle. */
+  .switch-camera-btn{
+    position:absolute;top:10px;right:10px;z-index:2;
+    background:rgba(10,13,16,.6);color:var(--text);border:1px solid rgba(255,255,255,.25);
+    border-radius:999px;padding:8px 14px;font-size:.8rem;font-weight:600;
+    display:flex;align-items:center;gap:6px;
+  }
+
   .toast{
     position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));
     transform:translateX(-50%);
@@ -437,6 +448,7 @@
       <div class="reticle"></div>
       <div id="scanFlash" class="scan-flash"></div>
       <div id="scanCheck" class="scan-check"><span>✓</span></div>
+      <button id="switchCameraBtn" class="switch-camera-btn" type="button" hidden>⟳ Switch Camera</button>
     </div>
     <div class="viewfinder-bar">
       <p id="scanCaption"></p>
@@ -469,6 +481,17 @@
   var currentMode = null; // 'location' | 'add' | 'remove'
   var codeReader = null;
   var scanControls = null;
+  // Some phones with 3+ rear lenses (several Samsung Galaxy models among
+  // them) hand a plain "environment-facing" camera request to the
+  // ultra-wide lens instead of the main one — it can't focus up close, so
+  // every scan just looks blurry even though the camera opens fine and
+  // permission is granted. There's no reliable way to ask for "the main
+  // lens" directly, so instead: default to the normal facingMode guess,
+  // but if a phone has used "Switch Camera" before, remember and reuse
+  // that exact camera (by deviceId) on this phone from then on. See
+  // buildVideoConstraints / refreshAvailableCameras / switchCameraBtn below.
+  var availableCameras = [];
+  var preferredCameraId = localStorage.getItem('wh_camera_id') || '';
   var lastDecode = { text: '', time: 0 };
   // pendingScan holds the product code + mode between a successful decode
   // and the user confirming (or cancelling) the quantity prompt for it.
@@ -491,7 +514,7 @@
    'whoBtn','locationBanner','locationLabel','locationCode','changeLocationBtn',
    'scanLocationBtn','scanAddBtn','scanRemoveBtn','sessionCount',
    'feedList','feedEmpty','feedMeta',
-   'viewfinder','video','scanCaption','cancelScanBtn','scanFlash',
+   'viewfinder','video','scanCaption','cancelScanBtn','scanFlash','switchCameraBtn',
    'vfLocationLabel','vfLocationName','vfCountBadge','scanCheck',
    'qtyOverlay','qtyActionLabel','qtyProductCode','qtyLocationName','qtyInput','qtyMinusBtn','qtyPlusBtn','qtyConfirmBtn','qtyCancelBtn',
    'openProductBtn','productOverlay','closeProductBtn','productFormView','productNameInput','productGenerateBtn',
@@ -1040,20 +1063,7 @@
     el.viewfinder.hidden = false;
     renderViewfinderHeader();
     reader.decodeFromConstraints(
-      {
-        video: {
-          facingMode: { ideal: 'environment' },
-          // Unconstrained resolution lets some phones request a very high
-          // sensor mode that makes every decode attempt slow, so this is
-          // capped rather than left wide open — but capped high enough
-          // (1080p) for small or slightly low-quality printed barcodes to
-          // still resolve clearly, paired with the TRY_HARDER decode hint
-          // set on the reader above.
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          advanced: [{ focusMode: 'continuous' }]
-        }
-      },
+      { video: buildVideoConstraints() },
       el.video,
       function(result){ if (result) handleDecode(result.getText()); }
     ).then(function(controls){
@@ -1066,10 +1076,64 @@
         return;
       }
       scanControls = controls;
+      refreshAvailableCameras();
     }).catch(function(err){
+      // A previously-remembered camera can stop existing (phone restart,
+      // browser reset, etc.) — if so, forget it and fall back to the
+      // normal facingMode guess once, instead of just failing outright.
+      if (preferredCameraId && (err && (err.name === 'OverconstrainedError' || err.name === 'NotFoundError'))) {
+        preferredCameraId = '';
+        try { localStorage.removeItem('wh_camera_id'); } catch(e){}
+        startScan(mode);
+        return;
+      }
       toast(cameraErrorMessage(err));
       stopScan();
     });
+  }
+
+  // Picks which camera to request. Most phones only ever hit the first
+  // branch (the standard "back camera" guess) — the exact deviceId branch
+  // only kicks in once someone has tapped "Switch Camera" on THIS phone
+  // (see switchCameraBtn below), after which it's remembered and reused
+  // automatically, since the right lens for a given phone never changes.
+  function buildVideoConstraints(){
+    var base = {
+      // Unconstrained resolution lets some phones request a very high
+      // sensor mode that makes every decode attempt slow, so this is
+      // capped rather than left wide open — but capped high enough
+      // (1080p) for small or slightly low-quality printed barcodes to
+      // still resolve clearly, paired with the TRY_HARDER decode hint
+      // set on the reader above.
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+      advanced: [{ focusMode: 'continuous' }]
+    };
+    if (preferredCameraId) {
+      base.deviceId = { exact: preferredCameraId };
+    } else {
+      base.facingMode = { ideal: 'environment' };
+    }
+    return base;
+  }
+
+  // Device labels/ids are only populated by the browser once camera
+  // permission has actually been granted, so this is called right after a
+  // stream successfully starts rather than on page load. Only ever makes
+  // the "Switch Camera" button visible when there's genuinely more than
+  // one rear-ish camera to offer — on a normal single-rear-camera phone
+  // this stays hidden and nothing about the scan flow changes.
+  function refreshAvailableCameras(){
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    navigator.mediaDevices.enumerateDevices().then(function(devices){
+      var videos = devices.filter(function(d){ return d.kind === 'videoinput'; });
+      // Best-effort: steer the cycle away from an obviously front-facing
+      // camera when labels say so, but never filter down to nothing —
+      // labels aren't guaranteed descriptive on every phone/browser.
+      var backish = videos.filter(function(d){ return !/front/i.test(d.label || ''); });
+      availableCameras = backish.length ? backish : videos;
+      el.switchCameraBtn.hidden = availableCameras.length < 2;
+    }).catch(function(){ /* leave the switch button hidden */ });
   }
 
   // The library's continuous decode loop is only reliable for the FIRST
@@ -1223,6 +1287,18 @@
   el.scanAddBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanAddBtn.disabled) startScan('add'); });
   el.scanRemoveBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanRemoveBtn.disabled) startScan('remove'); });
   el.cancelScanBtn.addEventListener('click', stopScan);
+  el.switchCameraBtn.addEventListener('click', function(){
+    if (!availableCameras.length) return;
+    var currentIdx = -1;
+    for (var i = 0; i < availableCameras.length; i++) {
+      if (availableCameras[i].deviceId === preferredCameraId) { currentIdx = i; break; }
+    }
+    var nextIdx = (currentIdx + 1) % availableCameras.length;
+    preferredCameraId = availableCameras[nextIdx].deviceId;
+    try { localStorage.setItem('wh_camera_id', preferredCameraId); } catch(e){}
+    toast('Switched camera — remembered for next time too');
+    restartScan(currentMode, el.scanCaption.textContent);
+  });
 
   // ---------- boot ----------
   function boot(){
