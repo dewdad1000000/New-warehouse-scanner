@@ -339,6 +339,13 @@
       <p class="field-label">Products</p>
       <p class="muted small">Register a new product and get a ready-to-use code automatically — no need to pick a number yourself.</p>
       <button id="openProductBtn" class="secondary-btn full" type="button">+ Add New Product</button>
+
+      <p class="field-label">Label Printer</p>
+      <p class="muted small">Prints the SKU code + QR code straight to your Polono P31S over Bluetooth, laid out like your sample label. Works in Chrome on Android — connect once on each phone and it's remembered after that.</p>
+      <div class="status-row" id="printerStatusRow"></div>
+      <button id="connectPrinterBtn" class="secondary-btn full" type="button">Connect Printer</button>
+      <button id="printTestLabelBtn" class="secondary-btn full" type="button">Print Test Label</button>
+      <p class="muted small">This is a new feature — the first test print may come out the wrong size, rotated, or mirrored. That's expected; tell Claude what you see and it can be adjusted.</p>
     </div>
   </div>
 
@@ -361,6 +368,7 @@
         <p id="productResultName" class="muted small"></p>
         <img id="productResultQr" class="qr-image" alt="QR code for this product — optional, for screenshotting or printing directly" onerror="this.style.display='none'" onload="this.style.display='block'" />
         <p class="muted small">Type the code above into your label maker, or screenshot the QR code if that's easier.</p>
+        <button id="printProductLabelBtn" class="secondary-btn full" type="button">🖶 Print Label</button>
         <button id="productAddAnotherBtn" class="secondary-btn full" type="button">Add Another</button>
         <button id="productDoneBtn" class="primary-btn full" type="button">Done</button>
       </div>
@@ -466,6 +474,14 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
+<!-- Pure client-side QR *generation* (as opposed to the on-screen QR, which is
+     just an <img> from a free image API) — needed so the label printer can be
+     handed the actual black/white module grid to draw into a bitmap, with no
+     network dependency at print time. qrcode_UTF8.min.js is a small add-on
+     that patches the global `qrcode` object qrcode.min.js creates, so both
+     are required and must load in this order. -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode_UTF8.min.js"></script>
 <script>
 (function(){
   "use strict";
@@ -534,7 +550,8 @@
    'qtyOverlay','qtyActionLabel','qtyProductCode','qtyLocationName','qtyInput','qtyMinusBtn','qtyPlusBtn','qtyConfirmBtn','qtyCancelBtn',
    'openProductBtn','productOverlay','closeProductBtn','productFormView','productNameInput','productGenerateBtn',
    'productResultView','productResultCode','productResultName','productResultQr','productAddAnotherBtn','productDoneBtn',
-   'productRecentList','productRecentEmpty'
+   'productRecentList','productRecentEmpty',
+   'printerStatusRow','connectPrinterBtn','printTestLabelBtn','printProductLabelBtn'
   ].forEach(function(id){ el[id] = document.getElementById(id); });
 
   // ---------- helpers ----------
@@ -792,6 +809,278 @@
 
   el.productAddAnotherBtn.addEventListener('click', showProductForm);
   el.productDoneBtn.addEventListener('click', function(){ el.productOverlay.hidden = true; });
+
+  // ---------- label printer (Polono P31S over Web Bluetooth) ----------
+  // Built from a hobbyist reverse-engineering of this printer's Bluetooth
+  // protocol (github.com/olofj/p31s) — Polono/MAPLEPRINT has no published
+  // SDK for this. The constants below are the only documented example found
+  // for this exact printer; treat them as a first guess, not a guarantee.
+  // If a real test print comes out the wrong size, sideways, or mirrored,
+  // these are the knobs to turn before touching anything else in this
+  // section — see the comment above LABEL_TRANSPOSE.
+  var PRINTER_SERVICE_UUID = '0000ff00-0000-1000-8000-00805f9b34fb';
+  var PRINTER_WRITE_CHAR_UUID = '0000ff02-0000-1000-8000-00805f9b34fb';
+
+  // Printer-native bitmap geometry. Width must stay a multiple of 8 — one
+  // TSPL bitmap byte packs 8 pixels across the print head.
+  var LABEL_WIDTH_PX = 96;     // the print head's fixed across-dimension
+  var LABEL_LENGTH_PX = 304;   // the variable along-the-feed dimension
+  var LABEL_SIZE_MM = '15 mm,40 mm';
+  var LABEL_GAP_MM = '5.0 mm,0 mm';
+  var LABEL_DENSITY = 15;
+  var LABEL_BITMAP_MODE = 1;   // 1 = OR — the documented "works best" mode
+
+  // renderLabelCanvas (below) always draws the label in the natural reading
+  // orientation — QR square on the left, code text to the right, matching
+  // Steve's sample label — as a canvas LABEL_LENGTH_PX wide by
+  // LABEL_WIDTH_PX tall. Whether that needs transposing/mirroring to come
+  // out right-side-up on the actual printer can't be known without a real
+  // test print, so it's a flag rather than baked into the drawing code:
+  // flip LABEL_TRANSPOSE if the label prints sideways, flip the MIRROR_*
+  // flags if it prints backwards/upside-down.
+  var LABEL_TRANSPOSE = true;
+  var LABEL_MIRROR_X = false;
+  var LABEL_MIRROR_Y = false;
+
+  var printerDevice = null;
+  var printerCharacteristic = null;
+
+  function webBluetoothSupported(){
+    return !!(navigator.bluetooth && navigator.bluetooth.requestDevice);
+  }
+
+  function setPrinterStatus(text, cls){
+    if (!el.printerStatusRow) return;
+    el.printerStatusRow.textContent = text;
+    el.printerStatusRow.className = 'status-row' + (cls ? ' ' + cls : '');
+  }
+
+  function onPrinterDisconnected(){
+    printerCharacteristic = null;
+    setPrinterStatus('Printer disconnected — tap Connect Printer to reconnect.', 'warn');
+  }
+
+  // If this phone already granted Bluetooth permission for the printer in
+  // an earlier visit, Chrome can hand it back without showing the picker
+  // again. Best-effort only — older/other browsers just skip this, and the
+  // user taps Connect Printer once instead.
+  function tryReconnectPrinterSilently(){
+    if (!(navigator.bluetooth && navigator.bluetooth.getDevices)) return;
+    navigator.bluetooth.getDevices().then(function(devices){
+      var match = devices.find(function(d){ return /^(P31S|POLONO)/i.test(d.name || ''); });
+      if (match) {
+        printerDevice = match;
+        match.addEventListener('gattserverdisconnected', onPrinterDisconnected);
+        setPrinterStatus('Printer remembered from before — ready to print.', '');
+      }
+    }).catch(function(){ /* not supported, or nothing remembered yet — fine */ });
+  }
+  tryReconnectPrinterSilently();
+
+  // Shows the Bluetooth device picker — must be called directly from a
+  // click handler, since Web Bluetooth requires an actual user gesture.
+  function connectPrinter(){
+    if (!webBluetoothSupported()) {
+      setPrinterStatus('This browser can\'t talk to Bluetooth printers — use Chrome on Android.', 'warn');
+      return Promise.reject(new Error('no_web_bluetooth'));
+    }
+    setPrinterStatus('Choose your printer from the list…', '');
+    return navigator.bluetooth.requestDevice({
+      filters: [
+        { namePrefix: 'P31S' },
+        { namePrefix: 'POLONO' },
+        { services: [PRINTER_SERVICE_UUID] }
+      ],
+      optionalServices: [PRINTER_SERVICE_UUID]
+    }).then(function(device){
+      printerDevice = device;
+      device.addEventListener('gattserverdisconnected', onPrinterDisconnected);
+      return device.gatt.connect();
+    }).then(function(server){
+      return server.getPrimaryService(PRINTER_SERVICE_UUID);
+    }).then(function(service){
+      return service.getCharacteristic(PRINTER_WRITE_CHAR_UUID);
+    }).then(function(ch){
+      printerCharacteristic = ch;
+      setPrinterStatus('Printer connected.', 'good');
+      return ch;
+    }).catch(function(err){
+      printerCharacteristic = null;
+      if (err && err.name === 'NotFoundError') {
+        setPrinterStatus('No printer selected.', '');
+      } else {
+        setPrinterStatus('Could not connect to the printer — make sure it\'s turned on and nearby.', 'warn');
+      }
+      throw err;
+    });
+  }
+
+  // Resolves to a ready-to-write characteristic, reusing the existing
+  // connection when possible and only showing the device picker (which
+  // needs a fresh tap) the very first time, or once the remembered device
+  // is gone for good.
+  function ensurePrinterConnected(){
+    if (printerCharacteristic && printerDevice && printerDevice.gatt.connected) {
+      return Promise.resolve(printerCharacteristic);
+    }
+    if (printerDevice) {
+      return printerDevice.gatt.connect()
+        .then(function(server){ return server.getPrimaryService(PRINTER_SERVICE_UUID); })
+        .then(function(service){ return service.getCharacteristic(PRINTER_WRITE_CHAR_UUID); })
+        .then(function(ch){ printerCharacteristic = ch; return ch; });
+    }
+    return connectPrinter();
+  }
+
+  function writeChunk(characteristic, chunk){
+    if (characteristic.writeValueWithoutResponse) return characteristic.writeValueWithoutResponse(chunk);
+    return characteristic.writeValue(chunk);
+  }
+
+  // BLE writes are kept small and spaced out — cheap printer clones like
+  // this one can drop data sent too large or too fast in a single burst.
+  function writeInChunks(characteristic, bytes){
+    var CHUNK = 100, DELAY_MS = 20, offset = 0;
+    function next(){
+      if (offset >= bytes.length) return Promise.resolve();
+      var chunk = bytes.subarray(offset, Math.min(offset + CHUNK, bytes.length));
+      offset += CHUNK;
+      return writeChunk(characteristic, chunk)
+        .then(function(){ return new Promise(function(r){ setTimeout(r, DELAY_MS); }); })
+        .then(next);
+    }
+    return next();
+  }
+
+  // Draws the label exactly as it should look once printed: a QR code
+  // (generated locally — see the qrcode-generator script tags above, no
+  // network call needed) on the left, the product code in bold to the
+  // right, matching Steve's sample label.
+  function renderLabelCanvas(code){
+    var visualW = LABEL_LENGTH_PX, visualH = LABEL_WIDTH_PX;
+    var canvas = document.createElement('canvas');
+    canvas.width = visualW;
+    canvas.height = visualH;
+    var ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, visualW, visualH);
+
+    var margin = 4;
+    var qrSize = visualH - margin * 2;
+    var qr = qrcode(0, 'M');
+    qr.addData(code);
+    qr.make();
+    var moduleCount = qr.getModuleCount();
+    var quietZoneModules = 2; // white border around the QR so it stays scannable
+    var moduleSize = qrSize / (moduleCount + quietZoneModules * 2);
+    ctx.fillStyle = '#000';
+    for (var row = 0; row < moduleCount; row++) {
+      for (var col = 0; col < moduleCount; col++) {
+        if (qr.isDark(row, col)) {
+          var x = margin + (col + quietZoneModules) * moduleSize;
+          var y = margin + (row + quietZoneModules) * moduleSize;
+          ctx.fillRect(Math.round(x), Math.round(y), Math.ceil(moduleSize), Math.ceil(moduleSize));
+        }
+      }
+    }
+
+    var textLeft = margin + qrSize + margin * 2;
+    var textWidth = visualW - textLeft - margin;
+    ctx.fillStyle = '#000';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    var fontSize = Math.floor(visualH * 0.55);
+    ctx.font = 'bold ' + fontSize + 'px monospace';
+    while (fontSize > 8 && ctx.measureText(code).width > textWidth) {
+      fontSize -= 1;
+      ctx.font = 'bold ' + fontSize + 'px monospace';
+    }
+    ctx.fillText(code, textLeft, visualH / 2);
+    return canvas;
+  }
+
+  // Converts the visual canvas above into the 1-bit-per-pixel, MSB-first
+  // format TSPL's BITMAP command expects (0 = black/burn, 1 = white) —
+  // applying LABEL_TRANSPOSE/MIRROR_* on the way, since those describe how
+  // the *printer's* raw pixel grid relates to the canvas we drew.
+  function canvasToTsplBitmap(canvas){
+    var ctx = canvas.getContext('2d');
+    var visualW = canvas.width, visualH = canvas.height;
+    var img = ctx.getImageData(0, 0, visualW, visualH).data;
+    function isBlackAt(vx, vy){
+      var i = (vy * visualW + vx) * 4;
+      return (img[i] + img[i + 1] + img[i + 2]) / 3 < 128;
+    }
+    var rawW = LABEL_TRANSPOSE ? visualH : visualW;
+    var rawH = LABEL_TRANSPOSE ? visualW : visualH;
+    var widthBytes = Math.ceil(rawW / 8);
+    var bytes = new Uint8Array(widthBytes * rawH);
+    for (var ry = 0; ry < rawH; ry++) {
+      for (var rx = 0; rx < rawW; rx++) {
+        var vx = LABEL_TRANSPOSE ? ry : rx;
+        var vy = LABEL_TRANSPOSE ? rx : ry;
+        if (LABEL_MIRROR_X) vx = visualW - 1 - vx;
+        if (LABEL_MIRROR_Y) vy = visualH - 1 - vy;
+        if (isBlackAt(vx, vy)) {
+          bytes[ry * widthBytes + (rx >> 3)] |= (1 << (7 - (rx % 8)));
+        }
+      }
+    }
+    // Flip every bit: we just built "1 = black", but the printer wants the
+    // opposite. Any padding bits in a row (none currently, since 96 is a
+    // clean multiple of 8) end up white afterward, which is correct.
+    for (var k = 0; k < bytes.length; k++) bytes[k] = (~bytes[k]) & 0xff;
+    return { widthBytes: widthBytes, height: rawH, bytes: bytes };
+  }
+
+  function buildTsplBuffer(bitmap){
+    var header =
+      'SIZE ' + LABEL_SIZE_MM + '\r\n' +
+      'GAP ' + LABEL_GAP_MM + '\r\n' +
+      'DIRECTION 0,0\r\n' +
+      'DENSITY ' + LABEL_DENSITY + '\r\n' +
+      'CLS\r\n' +
+      'BITMAP 0,8,' + bitmap.widthBytes + ',' + bitmap.height + ',' + LABEL_BITMAP_MODE + ',';
+    var footer = '\r\nPRINT 1\r\n';
+    var enc = new TextEncoder();
+    var headerBytes = enc.encode(header);
+    var footerBytes = enc.encode(footer);
+    var out = new Uint8Array(headerBytes.length + bitmap.bytes.length + footerBytes.length);
+    out.set(headerBytes, 0);
+    out.set(bitmap.bytes, headerBytes.length);
+    out.set(footerBytes, headerBytes.length + bitmap.bytes.length);
+    return out;
+  }
+
+  function printToLabelPrinter(code){
+    if (!webBluetoothSupported()) {
+      toast('This browser can\'t print directly — open this app in Chrome on an Android phone.');
+      return;
+    }
+    setPrinterStatus('Connecting…', '');
+    ensurePrinterConnected().then(function(characteristic){
+      setPrinterStatus('Printing…', '');
+      var canvas = renderLabelCanvas(code);
+      var bitmap = canvasToTsplBitmap(canvas);
+      var buffer = buildTsplBuffer(bitmap);
+      return writeInChunks(characteristic, buffer);
+    }).then(function(){
+      setPrinterStatus('Printed ' + code + '.', 'good');
+      toast('Sent ' + code + ' to the printer.');
+    }).catch(function(err){
+      if (!(err && err.name === 'NotFoundError')) {
+        toast('Could not print that label — check the printer is on and nearby, then try again.');
+      }
+    });
+  }
+
+  el.connectPrinterBtn.addEventListener('click', function(){ connectPrinter(); });
+  el.printTestLabelBtn.addEventListener('click', function(){ printToLabelPrinter('TEST0001'); });
+  el.printProductLabelBtn.addEventListener('click', function(){
+    var code = el.productResultCode.textContent;
+    if (code) printToLabelPrinter(code);
+  });
 
   // ---------- submitting an add/remove event ----------
   // Unlike the old per-item model, this always has to go straight to the
