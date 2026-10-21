@@ -838,9 +838,15 @@
   // test print, so it's a flag rather than baked into the drawing code:
   // flip LABEL_TRANSPOSE if the label prints sideways, flip the MIRROR_*
   // flags if it prints backwards/upside-down.
+  // 2026-10-21: confirmed on Steve's actual printer that TRANSPOSE alone
+  // puts the QR/text in the right positions but mirrors the result (a plain
+  // coordinate transpose is a diagonal reflection, not a clean rotation —
+  // it takes exactly one of the two MIRROR_* flags below to turn it into a
+  // real 90° turn instead). MIRROR_Y is the one that keeps the left/right
+  // placement Steve already confirmed was correct while fixing the mirror.
   var LABEL_TRANSPOSE = true;
   var LABEL_MIRROR_X = false;
-  var LABEL_MIRROR_Y = false;
+  var LABEL_MIRROR_Y = true;
 
   var printerDevice = null;
   var printerCharacteristic = null;
