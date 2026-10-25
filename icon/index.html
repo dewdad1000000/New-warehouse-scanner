@@ -1,0 +1,1837 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Optimus</title>
+<link rel="icon" type="image/png" sizes="512x512" href="icons/optimus-icon-512.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/optimus-icon-192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/optimus-icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/optimus-icon-16.png">
+<link rel="shortcut icon" href="icons/favicon.ico">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/optimus-icon-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1B1A17">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+  :root{ padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  [hidden]{ display:none !important; }
+  img{ max-width:100%; }
+  /* Matches "Harry" (Steve's other self-built app) — warm cream, near-black
+     text/headers, a gold accent, Fraunces for display type over IBM Plex
+     Sans for everything else. Colors are painted explicitly rather than
+     left to the host theme, same as before.
+     One deliberate exception: the live camera viewfinder (search
+     "VF_" below) keeps its own fixed dark palette instead of using these
+     variables — glare on a warehouse floor and barcode contrast are a real
+     functional reason a camera screen stays dark regardless of the app's
+     theme, not an oversight. Everything else in the app uses the variables
+     below and is fully reskinned. */
+  :root{
+    --bg:#F5F2EC;
+    --surface:#FFFFFF;
+    --surface-2:#ECE8E0;
+    --border:#E2DDD3;
+    --border-soft:#EFEBE3;
+    --text:#1B1A17;
+    --text-dim:#5E5A52;
+    --accent:#F0B93A;
+    --accent-ink:#1B1A17;
+    --good:#2F8F5B;
+    --bad:#9B3A22;
+    --font-display:'Fraunces',Georgia,serif;
+    --font-body:'IBM Plex Sans',system-ui,sans-serif;
+    --font-mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--font-body);
+    padding-inline:16px;
+  }
+  h1,h2{font-family:var(--font-display);text-wrap:balance;margin:0;}
+  p{margin:0;}
+  button{font-family:var(--font-body);cursor:pointer;}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  [hidden]{display:none!important;}
+
+  .eyebrow{
+    font-family:var(--font-mono);
+    font-size:.72rem;
+    letter-spacing:.09em;
+    text-transform:uppercase;
+    color:var(--text-dim);
+  }
+  .muted{color:var(--text-dim);}
+  .small{font-size:.82rem;}
+
+  #main{max-width:520px;margin-inline:auto;padding-bottom:32px;}
+
+  /* ---------- top bar ---------- */
+  /* Stays a solid dark bar regardless of the light theme below it — this is
+     the "Harry" wordmark treatment (bold serif name, gold underline, on
+     black), so it keeps its own fixed colors rather than following --bg. */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:16px 4px 14px;
+    position:sticky;top:env(safe-area-inset-top,0px);
+    background:#1B1A17;
+    margin-inline:-16px;padding-inline:16px;
+    z-index:5;
+  }
+  .brand{display:flex;align-items:center;gap:8px;}
+  .brand-name{
+    font-family:var(--font-display);font-weight:600;font-size:1.3rem;color:#F5F2EC;
+    border-bottom:3px solid var(--accent);padding-bottom:2px;line-height:1.1;
+  }
+  .topbar-actions{display:flex;align-items:center;gap:8px;}
+  .icon-btn{
+    width:44px;height:44px;border-radius:12px;
+    background:var(--surface);border:1px solid var(--border);
+    color:var(--text);font-size:1.15rem;display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+  }
+  .icon-btn:active{background:var(--surface-2);border-color:var(--accent);transform:scale(.94);}
+  .pill-btn{
+    background:var(--surface);border:1px solid var(--border);color:var(--text);
+    border-radius:999px;padding:10px 14px;font-size:.85rem;font-weight:600;
+    max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    touch-action:manipulation;-webkit-tap-highlight-color:transparent;min-height:44px;
+  }
+  .pill-btn:active{background:var(--surface-2);transform:scale(.97);}
+
+  /* ---------- location banner ---------- */
+  .location-banner{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    background:linear-gradient(135deg,var(--surface-2),var(--surface));
+    border:1px solid var(--border);border-radius:16px;
+    padding:16px 18px;margin-bottom:14px;
+  }
+  .location-code{
+    font-family:var(--font-mono);font-size:1.3rem;font-weight:600;
+    color:var(--accent);letter-spacing:.02em;
+    word-break:break-word;
+  }
+  .location-banner.is-empty .location-code{color:var(--text-dim);font-family:var(--font-body);font-size:1rem;font-weight:500;}
+  .ghost-btn{
+    background:transparent;border:1px solid var(--border);color:var(--text);
+    border-radius:10px;padding:8px 12px;font-size:.82rem;font-weight:600;flex-shrink:0;
+  }
+  .ghost-btn.light{border-color:rgba(255,255,255,.35);color:#fff;}
+
+  /* ---------- scan action buttons ---------- */
+  .scan-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;}
+  .scan-actions.single{grid-template-columns:1fr;margin-bottom:10px;}
+  .action-btn{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    padding-block:20px;border-radius:16px;font-family:var(--font-body);
+    font-size:.95rem;font-weight:600;
+    border:1px solid var(--border);
+  }
+  .action-icon{font-size:1.5rem;}
+  .action-btn.outline{background:var(--surface);color:var(--text);}
+  /* Dark fill — Harry's "Mark done" button is solid near-black with light
+     text, not gold; gold is reserved for highlighted values/badges (see
+     the Google Sheet status pill, location code, etc.) rather than buttons. */
+  .action-btn.primary{background:var(--text);color:var(--bg);border-color:var(--text);}
+  .action-btn.primary:disabled{background:var(--surface);color:var(--text-dim);border-color:var(--border);}
+  .action-btn:disabled{opacity:.55;}
+  /* Remove Stock reuses the outline style but tints red so it reads as the
+     opposite of Add Stock at a glance. */
+  .action-btn.danger{border-color:rgba(155,58,34,.45);}
+  .action-btn.danger .action-icon{color:var(--bad);}
+  .action-btn.danger:disabled .action-icon{color:var(--text-dim);}
+
+  /* ---------- quantity prompt ---------- */
+  .qty-stepper{display:flex;align-items:center;justify-content:center;gap:14px;margin-block:8px;}
+  .qty-stepper .icon-btn{width:52px;height:52px;font-size:1.5rem;}
+  .qty-stepper input{
+    width:104px;text-align:center;font-family:var(--font-mono);font-size:1.7rem;font-weight:700;
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    border-radius:12px;padding:12px 6px;-moz-appearance:textfield;
+  }
+  .qty-stepper input::-webkit-outer-spin-button,
+  .qty-stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+
+  .session-count{
+    font-family:var(--font-mono);font-size:.8rem;color:var(--text-dim);
+    text-align:right;margin-block:10px 4px;
+  }
+
+  /* ---------- live feed ---------- */
+  .feed{margin-top:18px;}
+  .feed-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;}
+  .feed-head h2{font-size:1rem;}
+  .feed-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;}
+  .feed-row{
+    display:flex;align-items:center;gap:10px;
+    background:var(--surface);border:1px solid var(--border-soft);border-radius:12px;
+    padding:10px 12px;
+  }
+  .feed-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--text-dim);}
+  /* Every row shown here is already confirmed written to the Sheet (the
+     scanner only shows it after a successful server response), so the dot
+     now signals the action (Add vs. Remove) rather than a sync state. */
+  .feed-dot.add{background:var(--good);}
+  .feed-dot.remove{background:var(--accent);}
+  .feed-dot.move{background:#1E4A7A;}
+  .feed-main{flex:1;min-width:0;}
+  .feed-item{font-family:var(--font-mono);font-size:.88rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .feed-sub{font-size:.76rem;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .feed-time{font-family:var(--font-mono);font-size:.72rem;color:var(--text-dim);flex-shrink:0;font-variant-numeric:tabular-nums;}
+  .feed-empty{
+    border:1px dashed var(--border);border-radius:12px;padding:20px 16px;text-align:center;line-height:1.5;
+  }
+
+  /* ---------- overlays (name gate / settings / quantity prompt) ---------- */
+  /* z-index 35 so the quantity-prompt overlay sits above the full-screen
+     viewfinder (30) — the other overlays (name gate, settings) never open
+     while the viewfinder is up, so raising this shared z-index is safe. */
+  .overlay{
+    position:fixed;inset:0;z-index:35;
+    background:rgba(10,13,16,.72);
+    display:flex;align-items:flex-end;justify-content:center;
+    padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  }
+  .overlay-card{
+    width:100%;max-width:480px;max-height:88vh;overflow-y:auto;
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:20px;padding:22px;
+    display:flex;flex-direction:column;gap:12px;
+  }
+  .overlay-head{display:flex;align-items:center;justify-content:space-between;}
+  .overlay-card h1{font-size:1.35rem;margin-top:4px;}
+  .overlay-card h2{font-size:1.1rem;}
+  .field-label{font-size:.82rem;font-weight:600;margin-top:6px;}
+  input[type="text"],input:not([type]),input[type="url"]{
+    width:100%;background:var(--surface-2);border:1px solid var(--border);
+    color:var(--text);border-radius:10px;padding:11px 12px;font-size:.95rem;font-family:var(--font-body);
+  }
+  input[type="url"]{font-family:var(--font-mono);font-size:.82rem;}
+  .inline-form{display:flex;gap:8px;}
+  .inline-form input{flex:1;}
+  .inline-form button{
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    border-radius:10px;padding:0 16px;font-weight:600;font-size:.9rem;
+  }
+  .chip-row{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    border-radius:999px;padding:9px 15px;font-size:.88rem;font-weight:600;
+  }
+  .chip.selected{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
+  .primary-btn{
+    background:var(--text);color:var(--bg);border:none;border-radius:12px;
+    padding:13px;font-weight:700;font-size:.95rem;font-family:var(--font-body);
+  }
+  .secondary-btn{
+    background:transparent;border:1px solid var(--border);color:var(--text);
+    border-radius:12px;padding:12px;font-weight:600;font-size:.88rem;
+  }
+  .full{width:100%;}
+  .status-row{font-size:.82rem;padding:9px 12px;border-radius:10px;background:var(--surface-2);}
+  .status-row.good{color:var(--good);}
+  .status-row.warn{color:var(--accent);}
+  /* The QR is on a white backing regardless of theme, since that's what
+     most phone cameras and label-maker apps read most reliably. It's
+     always optional — the plain-text code above it is the real deliverable. */
+  .qr-image{display:block;margin:4px auto;width:180px;height:180px;border-radius:12px;background:#fff;padding:10px;}
+
+  /* ---------- viewfinder ---------- */
+  /* VF_* below are the OLD dark-theme colors, kept as fixed values on
+     purpose (not the --bg/--text/etc variables above, which are now the
+     light Harry palette) — a live camera screen stays dark for glare and
+     barcode-contrast reasons regardless of the rest of the app's theme. */
+  .viewfinder{
+    position:fixed;inset:0;z-index:30;background:#14181d; /* VF_BG */
+    display:flex;flex-direction:column;gap:12px;
+    padding:calc(14px + env(safe-area-inset-top,0px)) 14px calc(14px + env(safe-area-inset-bottom,0px));
+  }
+  .viewfinder-header{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0;
+  }
+  .viewfinder-loc{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .viewfinder-loc .eyebrow{color:#93a0ad;} /* VF_TEXT_DIM */
+  .vf-location-name{
+    font-family:var(--font-mono);font-weight:600;font-size:1.05rem;color:#eef1f4; /* VF_TEXT */
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .vf-count-badge{
+    font-family:var(--font-mono);font-size:.85rem;font-weight:700;color:var(--accent-ink);
+    background:var(--accent);border-radius:999px;padding:7px 13px;flex-shrink:0;
+    white-space:nowrap;
+  }
+  .viewfinder-stage{
+    position:relative;flex:1;min-height:0;
+    border-radius:22px;overflow:hidden;background:#000;
+    border:1px solid #2a323b; /* VF_BORDER_SOFT */
+    display:flex;align-items:center;justify-content:center;
+  }
+  .viewfinder-stage video{
+    position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  }
+  .reticle{
+    position:relative;width:min(70vw,300px);aspect-ratio:1;
+    border:3px solid rgba(240,185,58,.9);border-radius:18px;
+    box-shadow:0 0 0 2000px rgba(0,0,0,.42);
+  }
+  .scan-check{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    pointer-events:none;
+  }
+  .scan-check span{
+    font-size:3.4rem;line-height:1;color:var(--good);
+    background:rgba(10,13,16,.5);border-radius:50%;padding:14px 18px;
+    opacity:0;transform:scale(.6);
+    transition:opacity .1s ease,transform .18s cubic-bezier(.2,1.4,.4,1);
+  }
+  .scan-check.on span{opacity:1;transform:scale(1);}
+  .viewfinder-bar{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0;
+  }
+  .viewfinder-bar p{color:#eef1f4;font-weight:600;font-size:.9rem;} /* VF_TEXT */
+  .scan-flash{
+    position:absolute;inset:0;background:rgba(47,143,91,.28);opacity:0;pointer-events:none;
+    transition:opacity .15s ease;
+  }
+  .scan-flash.on{opacity:1;transition:none;}
+  .scan-flash.bad{background:rgba(155,58,34,.34);}
+
+  /* Only shown once we know the phone actually has more than one rear
+     camera to offer (see refreshAvailableCameras) — most phones never see
+     this button at all. Overlaid on the live video, top-right, out of the
+     way of the reticle in the middle. */
+  .switch-camera-btn{
+    position:absolute;top:10px;right:10px;z-index:2;
+    background:rgba(10,13,16,.6);color:#eef1f4;border:1px solid rgba(255,255,255,.25); /* VF_TEXT */
+    border-radius:999px;padding:8px 14px;font-size:.8rem;font-weight:600;
+    display:flex;align-items:center;gap:6px;
+  }
+
+  .toast{
+    position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));
+    transform:translateX(-50%);
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    padding:10px 16px;border-radius:999px;font-size:.85rem;z-index:40;
+    box-shadow:0 8px 24px rgba(0,0,0,.35);
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="nameGate" class="overlay" hidden>
+    <div class="overlay-card">
+      <p class="eyebrow">Optimus</p>
+      <h1>Who's scanning?</h1>
+      <p class="muted small">Pick your name, or add yourself. It gets tagged on every scan you make.</p>
+      <div id="nameChips" class="chip-row"></div>
+      <form id="nameForm" class="inline-form">
+        <input id="nameInput" placeholder="Your name" autocomplete="off" />
+        <button type="submit">Go</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="settingsOverlay" class="overlay" hidden>
+    <div class="overlay-card">
+      <div class="overlay-head">
+        <h2>Settings</h2>
+        <button class="icon-btn" id="closeSettingsBtn" aria-label="Close">✕</button>
+      </div>
+
+      <p class="field-label">Google Sheets connection</p>
+      <p class="muted small">Paste the Apps Script web app URL (ends in <code>/exec</code>). Set it once — every phone that opens this app link picks it up automatically.</p>
+      <input type="url" id="webAppUrlInput" placeholder="https://script.google.com/macros/s/.../exec" />
+      <div class="status-row" id="connectionStatus"></div>
+      <button id="saveUrlBtn" class="secondary-btn full">Save connection</button>
+
+      <p class="field-label">Scanner roster</p>
+      <p class="muted small">Names that show up on the "who's scanning" screen for every phone.</p>
+      <div id="rosterChips" class="chip-row"></div>
+      <form id="rosterForm" class="inline-form">
+        <input id="rosterInput" placeholder="Add a name" autocomplete="off" />
+        <button type="submit">Add</button>
+      </form>
+
+      <p class="field-label">Products</p>
+      <p class="muted small">Register a new product and get a ready-to-use code automatically — no need to pick a number yourself.</p>
+      <button id="openProductBtn" class="secondary-btn full" type="button">+ Add New Product</button>
+
+      <p class="field-label">Label Printer</p>
+      <p class="muted small">Prints the SKU code + QR code straight to your Polono P31S over Bluetooth, laid out like your sample label. Works in Chrome on Android — connect once on each phone and it's remembered after that.</p>
+      <div class="status-row" id="printerStatusRow"></div>
+      <button id="connectPrinterBtn" class="secondary-btn full" type="button">Connect Printer</button>
+      <button id="printTestLabelBtn" class="secondary-btn full" type="button">Print Test Label</button>
+      <p class="muted small">This is a new feature — the first test print may come out the wrong size, rotated, or mirrored. That's expected; tell Claude what you see and it can be adjusted.</p>
+    </div>
+  </div>
+
+  <div id="productOverlay" class="overlay" hidden>
+    <div class="overlay-card">
+      <div class="overlay-head">
+        <h2>Add New Product</h2>
+        <button class="icon-btn" id="closeProductBtn" aria-label="Close">✕</button>
+      </div>
+
+      <div id="productFormView">
+        <p class="field-label">Product name</p>
+        <input id="productNameInput" placeholder="e.g. Phone Case - Black" autocomplete="off" />
+        <button id="productGenerateBtn" class="primary-btn full" type="button">Generate Code &amp; Register</button>
+      </div>
+
+      <div id="productResultView" hidden>
+        <p class="muted small">New product registered:</p>
+        <p class="location-code" id="productResultCode" style="font-size:1.7rem;"></p>
+        <p id="productResultName" class="muted small"></p>
+        <img id="productResultQr" class="qr-image" alt="QR code for this product — optional, for screenshotting or printing directly" onerror="this.style.display='none'" onload="this.style.display='block'" />
+        <p class="muted small">Type the code above into your label maker, or screenshot the QR code if that's easier.</p>
+        <button id="printProductLabelBtn" class="secondary-btn full" type="button">🖶 Print Label</button>
+        <button id="productAddAnotherBtn" class="secondary-btn full" type="button">Add Another</button>
+        <button id="productDoneBtn" class="primary-btn full" type="button">Done</button>
+      </div>
+
+      <p class="field-label">Recently added</p>
+      <ul id="productRecentList" class="feed-list"></ul>
+      <p id="productRecentEmpty" class="muted small">None yet.</p>
+    </div>
+  </div>
+
+  <div id="qtyOverlay" class="overlay" hidden>
+    <div class="overlay-card">
+      <p class="eyebrow" id="qtyActionLabel">Add Stock</p>
+      <h1>How many units?</h1>
+      <p class="muted small">Code <span id="qtyProductCode" style="font-family:var(--font-mono);color:var(--text);font-weight:600;"></span> — <span id="qtyLocationName"></span></p>
+      <div class="qty-stepper">
+        <button id="qtyMinusBtn" class="icon-btn" type="button" aria-label="Decrease">−</button>
+        <input id="qtyInput" type="number" inputmode="numeric" min="1" step="1" value="1" />
+        <button id="qtyPlusBtn" class="icon-btn" type="button" aria-label="Increase">+</button>
+      </div>
+      <button id="qtyConfirmBtn" class="primary-btn full" type="button">Confirm</button>
+      <button id="qtyCancelBtn" class="secondary-btn full" type="button">Cancel — keep scanning</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-name">Optimus</span>
+      </div>
+      <div class="topbar-actions">
+        <button id="whoBtn" class="pill-btn" type="button"></button>
+        <button id="settingsBtn" class="icon-btn" type="button" aria-label="Settings">⚙</button>
+      </div>
+    </header>
+
+    <section class="location-banner is-empty" id="locationBanner">
+      <div>
+        <p class="eyebrow" id="locationLabel">No location set</p>
+        <p class="location-code" id="locationCode">Scan a location QR to begin</p>
+      </div>
+      <button id="changeLocationBtn" class="ghost-btn" type="button" hidden>Change</button>
+    </section>
+
+    <section class="scan-actions single">
+      <button id="scanLocationBtn" class="action-btn outline" type="button">
+        <span class="action-icon">▦</span>
+        <span>Scan Location</span>
+      </button>
+    </section>
+
+    <section class="scan-actions">
+      <button id="scanRemoveBtn" class="action-btn outline danger" type="button" disabled>
+        <span class="action-icon">−</span>
+        <span>Remove Stock</span>
+      </button>
+      <button id="scanAddBtn" class="action-btn primary" type="button" disabled>
+        <span class="action-icon">+</span>
+        <span>Add Stock</span>
+      </button>
+    </section>
+
+    <section class="scan-actions single">
+      <button id="scanMoveBtn" class="action-btn outline" type="button" disabled>
+        <span class="action-icon">⇄</span>
+        <span>Move Stock</span>
+      </button>
+    </section>
+
+    <p class="session-count" id="sessionCount" hidden></p>
+
+    <section class="feed">
+      <div class="feed-head">
+        <h2>Live activity</h2>
+        <span class="muted small" id="feedMeta"></span>
+      </div>
+      <ul id="feedList" class="feed-list"></ul>
+      <p id="feedEmpty" class="muted small feed-empty">Scans will show up here the moment they happen — on this phone and every other one connected to this app.</p>
+    </section>
+  </div>
+
+  <div id="viewfinder" class="viewfinder" hidden>
+    <div class="viewfinder-header">
+      <div class="viewfinder-loc">
+        <p class="eyebrow" id="vfLocationLabel">Scanning into</p>
+        <p class="vf-location-name" id="vfLocationName"></p>
+      </div>
+      <span id="vfCountBadge" class="vf-count-badge" hidden></span>
+    </div>
+    <div class="viewfinder-stage">
+      <video id="video" playsinline muted></video>
+      <div class="reticle"></div>
+      <div id="scanFlash" class="scan-flash"></div>
+      <div id="scanCheck" class="scan-check"><span>✓</span></div>
+      <button id="switchCameraBtn" class="switch-camera-btn" type="button" hidden>⟳ Switch Camera</button>
+    </div>
+    <div class="viewfinder-bar">
+      <p id="scanCaption"></p>
+      <button id="cancelScanBtn" class="ghost-btn light" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
+<!-- Pure client-side QR *generation* (as opposed to the on-screen QR, which is
+     just an <img> from a free image API) — needed so the label printer can be
+     handed the actual black/white module grid to draw into a bitmap, with no
+     network dependency at print time. qrcode_UTF8.min.js is a small add-on
+     that patches the global `qrcode` object qrcode.min.js creates, so both
+     are required and must load in this order. -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode_UTF8.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ---------- state ----------
+  // Pre-filled with your deployed Apps Script Web App URL, so phones work
+  // out of the box without pasting it into Settings first. Change it there
+  // (or edit DEFAULT_WEB_APP_URL below and re-upload) if you ever redeploy
+  // and get a new URL.
+  var DEFAULT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw8OXNIe5W92f7DNoobO9n6W-3Jfeu9xqmG3LVpi1iwzZ49hIwqybad6M6mg6f8XLFV8A/exec';
+  var db = null;
+  var scannerName = localStorage.getItem('wh_scanner_name') || '';
+  var activeLocation = localStorage.getItem('wh_active_location') || '';
+  // Units processed at the current location THIS SESSION (since the location
+  // was last scanned) — tracked separately for Add vs. Remove so the on-screen
+  // counters reflect actual units moved, not just how many codes were scanned.
+  var sessionAdded = 0;
+  var sessionRemoved = 0;
+  var config = { webAppUrl: DEFAULT_WEB_APP_URL, scannerNames: [] };
+  var feedPollTimer = null;
+  var currentMode = null; // 'location' | 'add' | 'remove'
+  var codeReader = null;
+  var scanControls = null;
+  // Some phones with 3+ rear lenses (several Samsung Galaxy models among
+  // them) hand a plain "environment-facing" camera request to the
+  // ultra-wide lens instead of the main one — it can't focus up close, so
+  // every scan just looks blurry even though the camera opens fine and
+  // permission is granted. There's no reliable way to ask for "the main
+  // lens" directly, so instead: default to the normal facingMode guess,
+  // but if a phone has used "Switch Camera" before, remember and reuse
+  // that exact camera (by deviceId) on this phone from then on. See
+  // buildVideoConstraints / refreshAvailableCameras / switchCameraBtn below.
+  var availableCameras = [];
+  var preferredCameraId = localStorage.getItem('wh_camera_id') || '';
+  var lastDecode = { text: '', time: 0 };
+  // pendingScan holds the product code + mode between a successful decode
+  // and the user confirming (or cancelling) the quantity prompt for it.
+  var pendingScan = null;
+  // pendingMove holds {productCode, quantity, fromLocation} for a Move
+  // Stock in progress, between the quantity prompt being confirmed and the
+  // destination location actually being scanned (see performMove below) —
+  // a move needs this extra step beyond pendingScan's single decode/confirm
+  // round trip. Cleared by stopScan() so cancelling out of the destination
+  // scan never leaves a stale move hanging around.
+  var pendingMove = null;
+  // Every event in the live feed below has already been confirmed written to
+  // the Sheet by the server (the scanner only shows it after a successful
+  // response) — there is no offline queue or retry-sync concept any more,
+  // since a scan can't be validated against the Products registry offline.
+  // localScans holds this phone's own just-submitted events so they appear
+  // instantly, before the next poll of the server's History tab catches up;
+  // lastServerRows holds the latest poll result. mergeFeed() combines them.
+  var localScans = [];
+  var lastServerRows = [];
+
+  // ---------- element refs ----------
+  var el = {};
+  ['nameGate','nameChips','nameForm','nameInput',
+   'settingsOverlay','settingsBtn','closeSettingsBtn','webAppUrlInput','connectionStatus','saveUrlBtn',
+   'rosterChips','rosterForm','rosterInput',
+   'whoBtn','locationBanner','locationLabel','locationCode','changeLocationBtn',
+   'scanLocationBtn','scanAddBtn','scanRemoveBtn','scanMoveBtn','sessionCount',
+   'feedList','feedEmpty','feedMeta',
+   'viewfinder','video','scanCaption','cancelScanBtn','scanFlash','switchCameraBtn',
+   'vfLocationLabel','vfLocationName','vfCountBadge','scanCheck',
+   'qtyOverlay','qtyActionLabel','qtyProductCode','qtyLocationName','qtyInput','qtyMinusBtn','qtyPlusBtn','qtyConfirmBtn','qtyCancelBtn',
+   'openProductBtn','productOverlay','closeProductBtn','productFormView','productNameInput','productGenerateBtn',
+   'productResultView','productResultCode','productResultName','productResultQr','productAddAnotherBtn','productDoneBtn',
+   'productRecentList','productRecentEmpty',
+   'printerStatusRow','connectPrinterBtn','printTestLabelBtn','printProductLabelBtn'
+  ].forEach(function(id){ el[id] = document.getElementById(id); });
+
+  // ---------- helpers ----------
+  function toast(msg){
+    var t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function(){ t.remove(); }, 2600);
+  }
+
+  function relTime(ts){
+    var diff = Date.now() - ts;
+    if (diff < 5000) return 'just now';
+    if (diff < 60000) return Math.floor(diff/1000) + 's ago';
+    if (diff < 3600000) return Math.floor(diff/60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
+    return Math.floor(diff/86400000) + 'd ago';
+  }
+
+  function vibrate(ms){ try { navigator.vibrate && navigator.vibrate(ms); } catch(e){} }
+
+  // ---------- local (no-db) config fallback ----------
+  function loadLocalConfig(){
+    config.webAppUrl = localStorage.getItem('wh_config_url') || DEFAULT_WEB_APP_URL;
+    try { config.scannerNames = JSON.parse(localStorage.getItem('wh_config_roster') || '[]'); }
+    catch(e) { config.scannerNames = []; }
+  }
+  function saveLocalConfig(){
+    try {
+      localStorage.setItem('wh_config_url', config.webAppUrl);
+      localStorage.setItem('wh_config_roster', JSON.stringify(config.scannerNames));
+    } catch(e) {}
+  }
+
+  // ---------- render: who / location ----------
+  function renderWho(){
+    el.whoBtn.textContent = scannerName ? scannerName : 'Set name';
+  }
+  function renderLocation(){
+    if (activeLocation) {
+      el.locationBanner.classList.remove('is-empty');
+      el.locationLabel.textContent = 'Scanning into';
+      el.locationCode.textContent = activeLocation;
+      el.changeLocationBtn.hidden = false;
+      el.scanAddBtn.disabled = false;
+      el.scanRemoveBtn.disabled = false;
+      el.scanMoveBtn.disabled = false;
+    } else {
+      el.locationBanner.classList.add('is-empty');
+      el.locationLabel.textContent = 'No location set';
+      el.locationCode.textContent = 'Scan a location QR to begin';
+      el.changeLocationBtn.hidden = true;
+      el.scanAddBtn.disabled = true;
+      el.scanRemoveBtn.disabled = true;
+      el.scanMoveBtn.disabled = true;
+    }
+    renderSessionCount();
+  }
+  function renderSessionCount(){
+    if (activeLocation && (sessionAdded > 0 || sessionRemoved > 0)) {
+      var parts = [];
+      if (sessionAdded > 0) parts.push(sessionAdded + ' added');
+      if (sessionRemoved > 0) parts.push(sessionRemoved + ' removed');
+      el.sessionCount.hidden = false;
+      el.sessionCount.textContent = parts.join(' · ') + ' at ' + activeLocation + ' this session';
+    } else {
+      el.sessionCount.hidden = true;
+    }
+  }
+
+  // ---------- name gate ----------
+  function renderNameChips(){
+    el.nameChips.innerHTML = '';
+    config.scannerNames.forEach(function(name){
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip' + (name === scannerName ? ' selected' : '');
+      chip.textContent = name;
+      chip.addEventListener('click', function(){ chooseScanner(name); });
+      el.nameChips.appendChild(chip);
+    });
+  }
+  function chooseScanner(name){
+    scannerName = name;
+    try { localStorage.setItem('wh_scanner_name', name); } catch(e) {}
+    renderWho();
+    el.nameGate.hidden = true;
+  }
+  function openNameGate(){
+    renderNameChips();
+    el.nameInput.value = '';
+    el.nameGate.hidden = false;
+  }
+  el.whoBtn.addEventListener('click', openNameGate);
+  el.nameForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    var name = el.nameInput.value.trim();
+    if (!name) return;
+    if (config.scannerNames.indexOf(name) === -1) {
+      config.scannerNames.push(name);
+      persistRoster();
+    }
+    chooseScanner(name);
+  });
+
+  // ---------- settings ----------
+  function renderRoster(){
+    el.rosterChips.innerHTML = '';
+    config.scannerNames.forEach(function(name){
+      var chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.textContent = name;
+      el.rosterChips.appendChild(chip);
+    });
+  }
+  function renderConnectionStatus(){
+    if (config.webAppUrl) {
+      el.connectionStatus.className = 'status-row good';
+      el.connectionStatus.textContent = '● Connected — scans sync to your Google Sheet.';
+    } else {
+      el.connectionStatus.className = 'status-row warn';
+      el.connectionStatus.textContent = '● Not connected yet — scans are only kept in this live feed until you add the Sheets URL.';
+    }
+  }
+  function openSettings(){
+    el.webAppUrlInput.value = config.webAppUrl;
+    renderRoster();
+    renderConnectionStatus();
+    el.settingsOverlay.hidden = false;
+  }
+  el.settingsBtn.addEventListener('click', openSettings);
+  el.closeSettingsBtn.addEventListener('click', function(){ el.settingsOverlay.hidden = true; });
+  el.settingsOverlay.addEventListener('click', function(e){ if (e.target === el.settingsOverlay) el.settingsOverlay.hidden = true; });
+
+  function persistRoster(){
+    if (db) { db.doc('config/settings').set({ webAppUrl: config.webAppUrl, scannerNames: config.scannerNames }).catch(function(){}); }
+    else { saveLocalConfig(); }
+  }
+
+  el.rosterForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    var name = el.rosterInput.value.trim();
+    if (!name) return;
+    if (config.scannerNames.indexOf(name) === -1) config.scannerNames.push(name);
+    el.rosterInput.value = '';
+    renderRoster();
+    renderNameChips();
+    persistRoster();
+  });
+
+  el.saveUrlBtn.addEventListener('click', function(){
+    config.webAppUrl = el.webAppUrlInput.value.trim();
+    renderConnectionStatus();
+    if (db) {
+      db.doc('config/settings').set({ webAppUrl: config.webAppUrl, scannerNames: config.scannerNames })
+        .then(function(){ toast('Connection saved'); })
+        .catch(function(){ toast('Could not save — try again'); });
+    } else {
+      saveLocalConfig();
+      toast('Saved on this phone');
+    }
+  });
+
+  // ---------- add new product (auto-generated code) ----------
+  // A short, keyless public QR-rendering service — purely a convenience so
+  // the new code can be screenshotted or printed straight from the phone.
+  // The plain-text code is always shown too and is the real deliverable;
+  // if this image fails to load (no connection, service unreachable), the
+  // onerror handler on the <img> tag just hides it — nothing else depends on it.
+  function qrImageUrl(text){
+    return 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(text);
+  }
+
+  function renderRecentProducts(list){
+    el.productRecentList.innerHTML = '';
+    if (!list || !list.length) {
+      el.productRecentEmpty.hidden = false;
+      return;
+    }
+    el.productRecentEmpty.hidden = true;
+    list.forEach(function(p){
+      var li = document.createElement('li');
+      li.className = 'feed-row';
+      li.innerHTML =
+        '<span class="feed-main">' +
+          '<div class="feed-item"></div>' +
+          '<div class="feed-sub"></div>' +
+        '</span>';
+      li.querySelector('.feed-item').textContent = p.productCode;
+      li.querySelector('.feed-sub').textContent = p.name;
+      el.productRecentList.appendChild(li);
+    });
+  }
+
+  function loadRecentProducts(){
+    if (!config.webAppUrl) { renderRecentProducts([]); return; }
+    fetch(config.webAppUrl + '?action=recentProducts&limit=5')
+      .then(function(res){ return res.json(); })
+      .then(function(data){ renderRecentProducts(data && data.products); })
+      .catch(function(){ renderRecentProducts([]); });
+  }
+
+  function showProductForm(){
+    el.productResultView.hidden = true;
+    el.productFormView.hidden = false;
+    el.productNameInput.value = '';
+    el.productGenerateBtn.disabled = false;
+    el.productGenerateBtn.textContent = 'Generate Code & Register';
+    setTimeout(function(){ try { el.productNameInput.focus(); } catch(e){} }, 30);
+  }
+
+  function openProductOverlay(){
+    showProductForm();
+    loadRecentProducts();
+    el.productOverlay.hidden = false;
+  }
+
+  el.openProductBtn.addEventListener('click', openProductOverlay);
+  el.closeProductBtn.addEventListener('click', function(){ el.productOverlay.hidden = true; });
+  el.productOverlay.addEventListener('click', function(e){ if (e.target === el.productOverlay) el.productOverlay.hidden = true; });
+
+  el.productGenerateBtn.addEventListener('click', function(){
+    var name = el.productNameInput.value.trim();
+    if (!name) { toast('Enter a product name first'); return; }
+    if (!config.webAppUrl) { toast('No Google Sheet connected yet — add the connection above first.'); return; }
+    el.productGenerateBtn.disabled = true;
+    el.productGenerateBtn.textContent = 'Generating…';
+    fetch(config.webAppUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ op: 'addProduct', name: name, scannedBy: scannerName || 'Unknown', timestamp: Date.now() })
+    }).then(function(res){ return res.json(); })
+      .then(function(resp){
+        el.productGenerateBtn.disabled = false;
+        el.productGenerateBtn.textContent = 'Generate Code & Register';
+        if (resp && resp.ok) {
+          el.productResultCode.textContent = resp.productCode;
+          el.productResultName.textContent = resp.name;
+          el.productResultQr.src = qrImageUrl(resp.productCode);
+          el.productFormView.hidden = true;
+          el.productResultView.hidden = false;
+          loadRecentProducts();
+          toast('Registered ' + resp.productCode);
+        } else {
+          toast((resp && resp.message) || 'Could not register that product — try again.');
+        }
+      })
+      .catch(function(){
+        el.productGenerateBtn.disabled = false;
+        el.productGenerateBtn.textContent = 'Generate Code & Register';
+        toast('Could not reach your Google Sheet — check your connection and try again.');
+      });
+  });
+
+  el.productAddAnotherBtn.addEventListener('click', showProductForm);
+  el.productDoneBtn.addEventListener('click', function(){ el.productOverlay.hidden = true; });
+
+  // ---------- label printer (Polono P31S over Web Bluetooth) ----------
+  // Built from a hobbyist reverse-engineering of this printer's Bluetooth
+  // protocol (github.com/olofj/p31s) — Polono/MAPLEPRINT has no published
+  // SDK for this. The constants below are the only documented example found
+  // for this exact printer; treat them as a first guess, not a guarantee.
+  // If a real test print comes out the wrong size, sideways, or mirrored,
+  // these are the knobs to turn before touching anything else in this
+  // section — see the comment above LABEL_TRANSPOSE.
+  var PRINTER_SERVICE_UUID = '0000ff00-0000-1000-8000-00805f9b34fb';
+  var PRINTER_WRITE_CHAR_UUID = '0000ff02-0000-1000-8000-00805f9b34fb';
+
+  // Printer-native bitmap geometry. Width must stay a multiple of 8 — one
+  // TSPL bitmap byte packs 8 pixels across the print head.
+  var LABEL_WIDTH_PX = 96;     // the print head's fixed across-dimension
+  var LABEL_LENGTH_PX = 304;   // the variable along-the-feed dimension
+  var LABEL_SIZE_MM = '15 mm,40 mm';
+  var LABEL_GAP_MM = '5.0 mm,0 mm';
+  var LABEL_DENSITY = 15;
+  var LABEL_BITMAP_MODE = 1;   // 1 = OR — the documented "works best" mode
+
+  // renderLabelCanvas (below) always draws the label in the natural reading
+  // orientation — QR square on the left, code text to the right, matching
+  // Steve's sample label — as a canvas LABEL_LENGTH_PX wide by
+  // LABEL_WIDTH_PX tall. Whether that needs transposing/mirroring to come
+  // out right-side-up on the actual printer can't be known without a real
+  // test print, so it's a flag rather than baked into the drawing code:
+  // flip LABEL_TRANSPOSE if the label prints sideways, flip the MIRROR_*
+  // flags if it prints backwards/upside-down.
+  // 2026-10-21: confirmed on Steve's actual printer that TRANSPOSE alone
+  // puts the QR/text in the right positions but mirrors the result (a plain
+  // coordinate transpose is a diagonal reflection, not a clean rotation —
+  // it takes exactly one of the two MIRROR_* flags below to turn it into a
+  // real 90° turn instead). MIRROR_Y is the one that keeps the left/right
+  // placement Steve already confirmed was correct while fixing the mirror.
+  var LABEL_TRANSPOSE = true;
+  var LABEL_MIRROR_X = false;
+  var LABEL_MIRROR_Y = true;
+
+  var printerDevice = null;
+  var printerCharacteristic = null;
+
+  function webBluetoothSupported(){
+    return !!(navigator.bluetooth && navigator.bluetooth.requestDevice);
+  }
+
+  function setPrinterStatus(text, cls){
+    if (!el.printerStatusRow) return;
+    el.printerStatusRow.textContent = text;
+    el.printerStatusRow.className = 'status-row' + (cls ? ' ' + cls : '');
+  }
+
+  function onPrinterDisconnected(){
+    printerCharacteristic = null;
+    setPrinterStatus('Printer disconnected — tap Connect Printer to reconnect.', 'warn');
+  }
+
+  // If this phone already granted Bluetooth permission for the printer in
+  // an earlier visit, Chrome can hand it back without showing the picker
+  // again. Best-effort only — older/other browsers just skip this, and the
+  // user taps Connect Printer once instead.
+  function tryReconnectPrinterSilently(){
+    if (!(navigator.bluetooth && navigator.bluetooth.getDevices)) return;
+    navigator.bluetooth.getDevices().then(function(devices){
+      var match = devices.find(function(d){ return /^(P31S|POLONO)/i.test(d.name || ''); });
+      if (match) {
+        printerDevice = match;
+        match.addEventListener('gattserverdisconnected', onPrinterDisconnected);
+        setPrinterStatus('Printer remembered from before — ready to print.', '');
+      }
+    }).catch(function(){ /* not supported, or nothing remembered yet — fine */ });
+  }
+  tryReconnectPrinterSilently();
+
+  // Shows the Bluetooth device picker — must be called directly from a
+  // click handler, since Web Bluetooth requires an actual user gesture.
+  function connectPrinter(){
+    if (!webBluetoothSupported()) {
+      setPrinterStatus('This browser can\'t talk to Bluetooth printers — use Chrome on Android.', 'warn');
+      return Promise.reject(new Error('no_web_bluetooth'));
+    }
+    setPrinterStatus('Choose your printer from the list…', '');
+    return navigator.bluetooth.requestDevice({
+      filters: [
+        { namePrefix: 'P31S' },
+        { namePrefix: 'POLONO' },
+        { services: [PRINTER_SERVICE_UUID] }
+      ],
+      optionalServices: [PRINTER_SERVICE_UUID]
+    }).then(function(device){
+      printerDevice = device;
+      device.addEventListener('gattserverdisconnected', onPrinterDisconnected);
+      return device.gatt.connect();
+    }).then(function(server){
+      return server.getPrimaryService(PRINTER_SERVICE_UUID);
+    }).then(function(service){
+      return service.getCharacteristic(PRINTER_WRITE_CHAR_UUID);
+    }).then(function(ch){
+      printerCharacteristic = ch;
+      setPrinterStatus('Printer connected.', 'good');
+      return ch;
+    }).catch(function(err){
+      printerCharacteristic = null;
+      if (err && err.name === 'NotFoundError') {
+        setPrinterStatus('No printer selected.', '');
+      } else {
+        setPrinterStatus('Could not connect to the printer — make sure it\'s turned on and nearby.', 'warn');
+      }
+      throw err;
+    });
+  }
+
+  // Resolves to a ready-to-write characteristic, reusing the existing
+  // connection when possible and only showing the device picker (which
+  // needs a fresh tap) the very first time, or once the remembered device
+  // is gone for good.
+  function ensurePrinterConnected(){
+    if (printerCharacteristic && printerDevice && printerDevice.gatt.connected) {
+      return Promise.resolve(printerCharacteristic);
+    }
+    if (printerDevice) {
+      return printerDevice.gatt.connect()
+        .then(function(server){ return server.getPrimaryService(PRINTER_SERVICE_UUID); })
+        .then(function(service){ return service.getCharacteristic(PRINTER_WRITE_CHAR_UUID); })
+        .then(function(ch){ printerCharacteristic = ch; return ch; });
+    }
+    return connectPrinter();
+  }
+
+  function writeChunk(characteristic, chunk){
+    if (characteristic.writeValueWithoutResponse) return characteristic.writeValueWithoutResponse(chunk);
+    return characteristic.writeValue(chunk);
+  }
+
+  // BLE writes are kept small and spaced out — cheap printer clones like
+  // this one can drop data sent too large or too fast in a single burst.
+  function writeInChunks(characteristic, bytes){
+    var CHUNK = 100, DELAY_MS = 20, offset = 0;
+    function next(){
+      if (offset >= bytes.length) return Promise.resolve();
+      var chunk = bytes.subarray(offset, Math.min(offset + CHUNK, bytes.length));
+      offset += CHUNK;
+      return writeChunk(characteristic, chunk)
+        .then(function(){ return new Promise(function(r){ setTimeout(r, DELAY_MS); }); })
+        .then(next);
+    }
+    return next();
+  }
+
+  // Draws the label exactly as it should look once printed: a QR code
+  // (generated locally — see the qrcode-generator script tags above, no
+  // network call needed) on the left, the product code in bold to the
+  // right, matching Steve's sample label.
+  function renderLabelCanvas(code){
+    var visualW = LABEL_LENGTH_PX, visualH = LABEL_WIDTH_PX;
+    var canvas = document.createElement('canvas');
+    canvas.width = visualW;
+    canvas.height = visualH;
+    var ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, visualW, visualH);
+
+    var margin = 4;
+    var qrSize = visualH - margin * 2;
+    var qr = qrcode(0, 'M');
+    qr.addData(code);
+    qr.make();
+    var moduleCount = qr.getModuleCount();
+    var quietZoneModules = 2; // white border around the QR so it stays scannable
+    var moduleSize = qrSize / (moduleCount + quietZoneModules * 2);
+    ctx.fillStyle = '#000';
+    for (var row = 0; row < moduleCount; row++) {
+      for (var col = 0; col < moduleCount; col++) {
+        if (qr.isDark(row, col)) {
+          var x = margin + (col + quietZoneModules) * moduleSize;
+          var y = margin + (row + quietZoneModules) * moduleSize;
+          ctx.fillRect(Math.round(x), Math.round(y), Math.ceil(moduleSize), Math.ceil(moduleSize));
+        }
+      }
+    }
+
+    var textLeft = margin + qrSize + margin * 2;
+    var textWidth = visualW - textLeft - margin;
+    ctx.fillStyle = '#000';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    var fontSize = Math.floor(visualH * 0.55);
+    ctx.font = 'bold ' + fontSize + 'px monospace';
+    while (fontSize > 8 && ctx.measureText(code).width > textWidth) {
+      fontSize -= 1;
+      ctx.font = 'bold ' + fontSize + 'px monospace';
+    }
+    ctx.fillText(code, textLeft, visualH / 2);
+    return canvas;
+  }
+
+  // Converts the visual canvas above into the 1-bit-per-pixel, MSB-first
+  // format TSPL's BITMAP command expects (0 = black/burn, 1 = white) —
+  // applying LABEL_TRANSPOSE/MIRROR_* on the way, since those describe how
+  // the *printer's* raw pixel grid relates to the canvas we drew.
+  function canvasToTsplBitmap(canvas){
+    var ctx = canvas.getContext('2d');
+    var visualW = canvas.width, visualH = canvas.height;
+    var img = ctx.getImageData(0, 0, visualW, visualH).data;
+    function isBlackAt(vx, vy){
+      var i = (vy * visualW + vx) * 4;
+      return (img[i] + img[i + 1] + img[i + 2]) / 3 < 128;
+    }
+    var rawW = LABEL_TRANSPOSE ? visualH : visualW;
+    var rawH = LABEL_TRANSPOSE ? visualW : visualH;
+    var widthBytes = Math.ceil(rawW / 8);
+    var bytes = new Uint8Array(widthBytes * rawH);
+    for (var ry = 0; ry < rawH; ry++) {
+      for (var rx = 0; rx < rawW; rx++) {
+        var vx = LABEL_TRANSPOSE ? ry : rx;
+        var vy = LABEL_TRANSPOSE ? rx : ry;
+        if (LABEL_MIRROR_X) vx = visualW - 1 - vx;
+        if (LABEL_MIRROR_Y) vy = visualH - 1 - vy;
+        if (isBlackAt(vx, vy)) {
+          bytes[ry * widthBytes + (rx >> 3)] |= (1 << (7 - (rx % 8)));
+        }
+      }
+    }
+    // Flip every bit: we just built "1 = black", but the printer wants the
+    // opposite. Any padding bits in a row (none currently, since 96 is a
+    // clean multiple of 8) end up white afterward, which is correct.
+    for (var k = 0; k < bytes.length; k++) bytes[k] = (~bytes[k]) & 0xff;
+    return { widthBytes: widthBytes, height: rawH, bytes: bytes };
+  }
+
+  function buildTsplBuffer(bitmap){
+    var header =
+      'SIZE ' + LABEL_SIZE_MM + '\r\n' +
+      'GAP ' + LABEL_GAP_MM + '\r\n' +
+      'DIRECTION 0,0\r\n' +
+      'DENSITY ' + LABEL_DENSITY + '\r\n' +
+      'CLS\r\n' +
+      'BITMAP 0,8,' + bitmap.widthBytes + ',' + bitmap.height + ',' + LABEL_BITMAP_MODE + ',';
+    var footer = '\r\nPRINT 1\r\n';
+    var enc = new TextEncoder();
+    var headerBytes = enc.encode(header);
+    var footerBytes = enc.encode(footer);
+    var out = new Uint8Array(headerBytes.length + bitmap.bytes.length + footerBytes.length);
+    out.set(headerBytes, 0);
+    out.set(bitmap.bytes, headerBytes.length);
+    out.set(footerBytes, headerBytes.length + bitmap.bytes.length);
+    return out;
+  }
+
+  function printToLabelPrinter(code){
+    if (!webBluetoothSupported()) {
+      toast('This browser can\'t print directly — open this app in Chrome on an Android phone.');
+      return;
+    }
+    setPrinterStatus('Connecting…', '');
+    ensurePrinterConnected().then(function(characteristic){
+      setPrinterStatus('Printing…', '');
+      var canvas = renderLabelCanvas(code);
+      var bitmap = canvasToTsplBitmap(canvas);
+      var buffer = buildTsplBuffer(bitmap);
+      return writeInChunks(characteristic, buffer);
+    }).then(function(){
+      setPrinterStatus('Printed ' + code + '.', 'good');
+      toast('Sent ' + code + ' to the printer.');
+    }).catch(function(err){
+      if (!(err && err.name === 'NotFoundError')) {
+        toast('Could not print that label — check the printer is on and nearby, then try again.');
+      }
+    });
+  }
+
+  el.connectPrinterBtn.addEventListener('click', function(){ connectPrinter(); });
+  el.printTestLabelBtn.addEventListener('click', function(){ printToLabelPrinter('TEST0001'); });
+  el.printProductLabelBtn.addEventListener('click', function(){
+    var code = el.productResultCode.textContent;
+    if (code) printToLabelPrinter(code);
+  });
+
+  // ---------- submitting an add/remove event ----------
+  // Unlike the old per-item model, this always has to go straight to the
+  // server: only the Sheet's "Products" tab knows whether a code is really
+  // registered, so there's no safe way to accept a scan optimistically and
+  // sync it later. The quantity-prompt Confirm button awaits this directly.
+  function submitScanEvent(mode, productCode, quantity){
+    var action = mode === 'add' ? 'add' : 'remove';
+    var payload = {
+      op: 'scanEvent',
+      productCode: productCode, location: activeLocation, action: action,
+      quantity: quantity, scannedBy: scannerName || 'Unknown', timestamp: Date.now()
+    };
+    if (!config.webAppUrl) {
+      return Promise.resolve({ ok: false, error: 'not_connected', message: 'No Google Sheet connected yet — add the connection in Settings.' });
+    }
+    return fetch(config.webAppUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    }).then(function(res){ return res.json(); })
+      .then(function(data){ return data || { ok: false, error: 'bad_response', message: 'Unexpected response from your Google Sheet.' }; })
+      .catch(function(){ return { ok: false, error: 'network', message: 'Could not reach your Google Sheet — check your connection and try scanning that code again.' }; });
+  }
+
+  // ---------- submitting a move ----------
+  // Mirrors submitScanEvent above, but hits op: 'moveStock' so Code.gs does
+  // the Remove-at-origin + Add-at-destination as one atomic step under the
+  // same script lock, instead of this being two separate requests that could
+  // leave a move only half-done if the second one failed.
+  function submitMoveStock(productCode, fromLocation, toLocation, quantity){
+    var payload = {
+      op: 'moveStock',
+      productCode: productCode, fromLocation: fromLocation, toLocation: toLocation,
+      quantity: quantity, scannedBy: scannerName || 'Unknown', timestamp: Date.now()
+    };
+    if (!config.webAppUrl) {
+      return Promise.resolve({ ok: false, error: 'not_connected', message: 'No Google Sheet connected yet — add the connection in Settings.' });
+    }
+    return fetch(config.webAppUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    }).then(function(res){ return res.json(); })
+      .then(function(data){ return data || { ok: false, error: 'bad_response', message: 'Unexpected response from your Google Sheet.' }; })
+      .catch(function(){ return { ok: false, error: 'network', message: 'Could not reach your Google Sheet — check your connection and try scanning that code again.' }; });
+  }
+
+  // Shows this phone's own just-confirmed event in the live feed immediately,
+  // ahead of the next poll of the server's History tab (see mergeFeed below).
+  function recordLocalEvent(evt){
+    localScans.unshift(evt);
+    if (localScans.length > 30) localScans.length = 30;
+    renderFeed(mergeFeed());
+  }
+
+  // ---------- live feed ----------
+  function renderFeed(list){
+    if (!list.length) {
+      el.feedList.innerHTML = '';
+      el.feedEmpty.hidden = false;
+      el.feedMeta.textContent = '';
+      return;
+    }
+    el.feedEmpty.hidden = true;
+    el.feedMeta.textContent = list.length + ' recent';
+    el.feedList.innerHTML = '';
+    list.forEach(function(evt){
+      var li = document.createElement('li');
+      li.className = 'feed-row';
+      // Move Out / Move In are logged as two History rows (see Code.gs), not
+      // a boolean add/remove — give them their own dot color and wording so
+      // they don't show up looking like an unrelated Add or Remove.
+      var isMoveOut = evt.action === 'move out';
+      var isMoveIn = evt.action === 'move in';
+      var isAdd = evt.action === 'add';
+      var dotClass = (isMoveOut || isMoveIn) ? 'move' : (isAdd ? 'add' : 'remove');
+      var sign = (isAdd || isMoveIn) ? '+' : '−';
+      var subText;
+      if (isMoveOut) { subText = 'Moved from ' + evt.location + ' · ' + evt.scannedBy; }
+      else if (isMoveIn) { subText = 'Moved to ' + evt.location + ' · ' + evt.scannedBy; }
+      else { subText = (isAdd ? 'Added to ' : 'Removed from ') + evt.location + ' · ' + evt.scannedBy; }
+      li.innerHTML =
+        '<span class="feed-dot ' + dotClass + '"></span>' +
+        '<span class="feed-main">' +
+          '<div class="feed-item"></div>' +
+          '<div class="feed-sub"></div>' +
+        '</span>' +
+        '<span class="feed-time"></span>';
+      li.querySelector('.feed-item').textContent = sign + evt.quantity + ' ' + (evt.productName || evt.productCode);
+      li.querySelector('.feed-sub').textContent = subText;
+      li.querySelector('.feed-time').textContent = relTime(evt.timestamp);
+      el.feedList.appendChild(li);
+    });
+  }
+
+  // Combines this phone's own just-submitted events (shown instantly) with
+  // the latest poll of the server's History tab (shown for every phone),
+  // de-duplicating an event once the poll catches up to it. Two events are
+  // treated as "the same" when they share product, action, quantity,
+  // location and scanner, and happened within the same ~10-second window —
+  // close enough that this phone's own optimistic echo and the server's
+  // eventual record of that same event will always match.
+  function feedKey(evt){
+    return [evt.productCode, evt.action, evt.quantity, evt.location, evt.scannedBy, Math.round(evt.timestamp / 10000)].join('|');
+  }
+  function mergeFeed(){
+    var byKey = {};
+    lastServerRows.forEach(function(evt){ byKey[feedKey(evt)] = evt; });
+    localScans.forEach(function(evt){
+      var k = feedKey(evt);
+      if (!byKey[k]) byKey[k] = evt;
+    });
+    var out = [];
+    for (var k in byKey) { if (byKey.hasOwnProperty(k)) out.push(byKey[k]); }
+    out.sort(function(a,b){ return b.timestamp - a.timestamp; });
+    return out.slice(0, 30);
+  }
+  function pruneLocalScans(){
+    var cutoff = Date.now() - 60000;
+    localScans = localScans.filter(function(evt){ return evt.timestamp >= cutoff; });
+  }
+
+  // Pulls the shared "live" feed straight from the Sheet's History tab (via
+  // Code.gs's ?action=recent), so every phone sees everyone's scans within a
+  // few seconds — the Sheet itself is already updated instantly by doPost,
+  // this is just how the phones' own activity list catches up to it.
+  function pollFeed(){
+    if (!config.webAppUrl) { renderFeed(mergeFeed()); return; }
+    fetch(config.webAppUrl + '?action=recent&limit=25')
+      .then(function(res){ return res.json(); })
+      .then(function(data){
+        lastServerRows = (data && data.recent) ? data.recent.map(function(r){
+          return {
+            productCode: r.productCode, productName: r.productName,
+            action: String(r.action || '').toLowerCase(), quantity: r.quantity,
+            location: r.location, scannedBy: r.scannedBy, timestamp: r.timestamp
+          };
+        }) : [];
+        pruneLocalScans();
+        renderFeed(mergeFeed());
+      })
+      .catch(function(){ renderFeed(mergeFeed()); });
+  }
+
+  function startFeedPolling(){
+    if (feedPollTimer) return;
+    pollFeed();
+    feedPollTimer = setInterval(pollFeed, 6000);
+  }
+
+  // refresh relative timestamps periodically without a new subscription
+  setInterval(function(){
+    var rows = el.feedList.querySelectorAll('.feed-time');
+    // re-render is cheap enough and keeps times honest; skip if nothing shown
+    if (rows.length) { /* handled on next snapshot/update naturally */ }
+  }, 30000);
+
+  // ---------- camera / scanning ----------
+  function getReader(){
+    if (!codeReader) {
+      try {
+        if (window.ZXingBrowser) {
+          // TRY_HARDER tells the decoder to spend extra effort on a hard
+          // frame (small, low-contrast, or slightly damaged barcodes)
+          // instead of giving up fast. "3" is the exact numeric hint ID
+          // this pinned library version (@zxing/browser@0.2.1) uses for
+          // it internally — it isn't exposed on the public ZXingBrowser
+          // global, so it's hardcoded here rather than referenced by
+          // name; verified directly against this version's own source.
+          //
+          // POSSIBLE_FORMATS (hint ID 2) restricts the decoder to ONLY
+          // QR codes (BarcodeFormat.QR_CODE = 11 in this pinned version's
+          // own source — same reason it's a bare number, not a name).
+          // Both every location label and every item label are QR codes
+          // now, so there's no reason to also recognize the dozen-plus
+          // other 1D/2D formats this library supports by default — doing
+          // so was letting the scanner misread ordinary screen content
+          // (text edges, icons, UI patterns) as a barcode when the camera
+          // happened to be pointed at a monitor, recording bogus "items"
+          // that were never actually scanned. Narrowing to just QR_CODE
+          // removes nearly all of that false-positive surface, since a
+          // QR code's finder pattern (the three corner squares) is very
+          // distinctive and not something ordinary screen content will
+          // accidentally resemble.
+          // If the pinned version in the <script> tag below is ever
+          // changed, re-verify both of these numeric IDs still mean what
+          // this comment says.
+          var hints = new Map();
+          hints.set(3, true);
+          hints.set(2, [11]);
+          codeReader = new ZXingBrowser.BrowserMultiFormatReader(hints, {
+            // Tighter loop than the library default (500ms/500ms) so the
+            // next barcode is picked up quickly once one's in frame.
+            delayBetweenScanAttempts: 75,
+            delayBetweenScanSuccess: 250
+          });
+        }
+      } catch (e) { codeReader = null; }
+    }
+    return codeReader;
+  }
+
+  // ---------- audio confirmation ----------
+  // A short beep generated on the fly (no audio file to host/load) so a
+  // successful scan is confirmed by sound as well as vibration + the
+  // green flash + the checkmark. Created lazily on the first scan-button
+  // tap (a real user gesture) so mobile browsers don't block it.
+  var audioCtx = null;
+  function ensureAudio(){
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) {}
+  }
+  function playBeep(){
+    try {
+      ensureAudio();
+      if (!audioCtx) return;
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 1500;
+      var t = audioCtx.currentTime;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.32, t + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.12);
+    } catch (e) {}
+  }
+
+  function flashOk(){
+    el.scanFlash.classList.add('on');
+    setTimeout(function(){ el.scanFlash.classList.remove('on'); }, 140);
+    el.scanCheck.classList.add('on');
+    setTimeout(function(){ el.scanCheck.classList.remove('on'); }, 480);
+  }
+
+  function flashBad(){
+    el.scanFlash.classList.add('on', 'bad');
+    setTimeout(function(){ el.scanFlash.classList.remove('on', 'bad'); }, 220);
+  }
+
+  function playErrorBeep(){
+    try {
+      ensureAudio();
+      if (!audioCtx) return;
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 260;
+      var t = audioCtx.currentTime;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.22, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.23);
+    } catch (e) {}
+  }
+
+  // ---------- location vs. item code validation ----------
+  // Location QR codes are printed with a single "L" at the very start of
+  // their encoded text (e.g. "L Shelf 1", "L:Shelf 1", "L1", "L-Shelf 1" —
+  // a separator after "L" is optional and, if present, can be a space,
+  // colon, dot or dash; matching is case-insensitive) so the app can tell a
+  // location code apart from a product code by CONTENT, regardless of what
+  // kind of code (QR or barcode) either one is printed as.
+  // (2026-10-01: this used to be the three letters "loc" — switched to a
+  // single "L" to match the product codes' "P" convention. Every location
+  // label has to be reprinted with the new "L" prefix and rescanned once;
+  // an old "loc"-prefixed label will no longer be recognized as a location.)
+  // The (?![a-zA-Z]) guard stops "L" from matching inside an unrelated word
+  // that merely starts with that letter (e.g. "Loading Dock", "Label 5") —
+  // it only counts as the prefix when "L" is followed by a separator, a
+  // digit, or the end of the text, never by another letter.
+  var LOCATION_PREFIX_RE = /^L(?![a-zA-Z])[\s:._-]*/i;
+  function isLocationCode(text){
+    return typeof text === 'string' && LOCATION_PREFIX_RE.test(text.trim());
+  }
+  function stripLocationPrefix(text){
+    return text.trim().replace(LOCATION_PREFIX_RE, '').trim();
+  }
+
+  function renderViewfinderHeader(){
+    el.vfLocationName.textContent = activeLocation || '—';
+    if (currentMode === 'add' && sessionAdded > 0) {
+      el.vfCountBadge.hidden = false;
+      el.vfCountBadge.textContent = sessionAdded + ' added';
+    } else if (currentMode === 'remove' && sessionRemoved > 0) {
+      el.vfCountBadge.hidden = false;
+      el.vfCountBadge.textContent = sessionRemoved + ' removed';
+    } else {
+      el.vfCountBadge.hidden = true;
+    }
+  }
+
+  function cameraErrorMessage(err){
+    var name = err && err.name;
+    if (name === 'NotAllowedError' || name === 'SecurityError') return 'Camera permission blocked — check site settings and reload';
+    if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'No usable camera found on this device';
+    if (name === 'NotReadableError') return 'Camera is busy in another app — close it and try again';
+    return 'Camera error' + (name ? ' (' + name + ')' : '') + ' — try again';
+  }
+
+  function startScan(mode){
+    var reader = getReader();
+    if (!reader) { toast('Scanning library failed to load — refresh the page'); return; }
+    currentMode = mode;
+    el.scanCaption.textContent = scanCaptionFor(mode);
+    el.cancelScanBtn.textContent = mode === 'location' ? 'Cancel' : 'Done';
+    el.viewfinder.hidden = false;
+    renderViewfinderHeader();
+    reader.decodeFromConstraints(
+      { video: buildVideoConstraints() },
+      el.video,
+      function(result){ if (result) handleDecode(result.getText()); }
+    ).then(function(controls){
+      // Guard against a race with stopScan()/restartScan(): if the
+      // user tapped Done (or we're mid-restart into a newer scan) before
+      // this async camera setup finished, don't leave an orphaned stream
+      // running that nothing on screen can stop.
+      if (currentMode !== mode || el.viewfinder.hidden) {
+        try { controls.stop(); } catch(e){}
+        return;
+      }
+      scanControls = controls;
+      refreshAvailableCameras();
+    }).catch(function(err){
+      // A previously-remembered camera can stop existing (phone restart,
+      // browser reset, etc.) — if so, forget it and fall back to the
+      // normal facingMode guess once, instead of just failing outright.
+      if (preferredCameraId && (err && (err.name === 'OverconstrainedError' || err.name === 'NotFoundError'))) {
+        preferredCameraId = '';
+        try { localStorage.removeItem('wh_camera_id'); } catch(e){}
+        startScan(mode);
+        return;
+      }
+      toast(cameraErrorMessage(err));
+      stopScan();
+    });
+  }
+
+  // The caption shown above the camera view for each scan mode. Pulled out
+  // of startScan into its own function since there are now five modes
+  // (location, add, remove, move, move-destination) rather than three.
+  function scanCaptionFor(mode){
+    switch (mode) {
+      case 'location': return 'Point at the location QR code';
+      case 'add': return 'Adding stock at ' + activeLocation + ' — point at a product QR code.';
+      case 'remove': return 'Removing stock at ' + activeLocation + ' — point at a product QR code.';
+      case 'move': return 'Moving stock from ' + activeLocation + ' — point at a product QR code.';
+      case 'move-destination': return 'Now point at the DESTINATION location\'s QR code.';
+      default: return '';
+    }
+  }
+
+  // Picks which camera to request. Most phones only ever hit the first
+  // branch (the standard "back camera" guess) — the exact deviceId branch
+  // only kicks in once someone has tapped "Switch Camera" on THIS phone
+  // (see switchCameraBtn below), after which it's remembered and reused
+  // automatically, since the right lens for a given phone never changes.
+  function buildVideoConstraints(){
+    var base = {
+      // Unconstrained resolution lets some phones request a very high
+      // sensor mode that makes every decode attempt slow, so this is
+      // capped rather than left wide open — but capped high enough
+      // (1080p) for small or slightly low-quality printed barcodes to
+      // still resolve clearly, paired with the TRY_HARDER decode hint
+      // set on the reader above.
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+      advanced: [{ focusMode: 'continuous' }]
+    };
+    if (preferredCameraId) {
+      base.deviceId = { exact: preferredCameraId };
+    } else {
+      base.facingMode = { ideal: 'environment' };
+    }
+    return base;
+  }
+
+  // Device labels/ids are only populated by the browser once camera
+  // permission has actually been granted, so this is called right after a
+  // stream successfully starts rather than on page load. Only ever makes
+  // the "Switch Camera" button visible when there's genuinely more than
+  // one rear-ish camera to offer — on a normal single-rear-camera phone
+  // this stays hidden and nothing about the scan flow changes.
+  function refreshAvailableCameras(){
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    navigator.mediaDevices.enumerateDevices().then(function(devices){
+      var videos = devices.filter(function(d){ return d.kind === 'videoinput'; });
+      // Best-effort: steer the cycle away from an obviously front-facing
+      // camera when labels say so, but never filter down to nothing —
+      // labels aren't guaranteed descriptive on every phone/browser.
+      var backish = videos.filter(function(d){ return !/front/i.test(d.label || ''); });
+      availableCameras = backish.length ? backish : videos;
+      el.switchCameraBtn.hidden = availableCameras.length < 2;
+    }).catch(function(){ /* leave the switch button hidden */ });
+  }
+
+  // The library's continuous decode loop is only reliable for the FIRST
+  // code it finds in a given decodeFromConstraints() call — every scan in
+  // testing worked for that first read, but a second successful read
+  // inside the *same* loop reliably killed it (and silently took the
+  // camera stream down with it). Rather than trust that loop across
+  // multiple reads, EVERY decode — whether it's accepted as a real scan
+  // or rejected as the wrong kind of code (see isLocationCode above) —
+  // gets its own fresh attempt afterward: a brand-new reader instance and
+  // a brand-new decodeFromConstraints call, which is the exact path
+  // that's proven itself reliable every time. A rejected code still
+  // counts as "a decode" to the library even though the app ignores its
+  // content, so it still needs this restart or the *next* real scan
+  // would be the second read in that loop and would silently fail.
+  function restartScan(mode, caption){
+    if (scanControls) { try { scanControls.stop(); } catch(e){} scanControls = null; }
+    codeReader = null;
+    startScan(mode);
+    if (caption !== undefined) el.scanCaption.textContent = caption;
+  }
+
+  function stopScan(){
+    if (scanControls) { try { scanControls.stop(); } catch(e){} scanControls = null; }
+    el.viewfinder.hidden = true;
+    currentMode = null;
+    // Cancelling out of a Move Stock flow at any point (including the
+    // destination-scan step) should drop the pending move entirely rather
+    // than leave it around for some later scan to accidentally pick up.
+    pendingMove = null;
+  }
+
+  // Stops the camera stream without hiding the viewfinder's own hidden-state
+  // bookkeeping any further than that — used right before the quantity
+  // prompt takes over, so no stray decode fires while the user is typing.
+  function pauseScan(){
+    if (scanControls) { try { scanControls.stop(); } catch(e){} scanControls = null; }
+    codeReader = null;
+  }
+
+  // ---------- quantity prompt (Add/Remove/Move) ----------
+  function openQuantityPrompt(mode, productCode){
+    pauseScan();
+    pendingScan = { mode: mode, productCode: productCode };
+    el.qtyActionLabel.textContent = mode === 'add' ? 'Add Stock' : (mode === 'remove' ? 'Remove Stock' : 'Move Stock');
+    el.qtyProductCode.textContent = productCode;
+    // For a move, this is the location it's coming FROM — the destination
+    // isn't known yet (that's the next step, after Confirm below).
+    el.qtyLocationName.textContent = mode === 'move' ? ('moving from ' + activeLocation) : activeLocation;
+    el.qtyInput.value = '1';
+    el.qtyConfirmBtn.disabled = false;
+    el.qtyConfirmBtn.textContent = mode === 'move' ? 'Next: Scan Destination' : 'Confirm';
+    el.viewfinder.hidden = true;
+    el.qtyOverlay.hidden = false;
+    setTimeout(function(){ try { el.qtyInput.focus(); el.qtyInput.select(); } catch(e){} }, 30);
+  }
+
+  function closeQuantityPrompt(){
+    el.qtyOverlay.hidden = true;
+    pendingScan = null;
+  }
+
+  function stepQuantity(delta){
+    var n = parseInt(el.qtyInput.value, 10);
+    if (!Number.isFinite(n)) n = 1;
+    n = Math.max(1, n + delta);
+    el.qtyInput.value = String(n);
+  }
+
+  el.qtyMinusBtn.addEventListener('click', function(){ stepQuantity(-1); });
+  el.qtyPlusBtn.addEventListener('click', function(){ stepQuantity(1); });
+
+  el.qtyCancelBtn.addEventListener('click', function(){
+    var mode = pendingScan ? pendingScan.mode : (currentMode || 'add');
+    closeQuantityPrompt();
+    startScan(mode);
+  });
+
+  el.qtyConfirmBtn.addEventListener('click', function(){
+    if (!pendingScan) return;
+    var n = parseInt(el.qtyInput.value, 10);
+    if (!Number.isFinite(n) || n < 1) { toast('Enter a quantity of at least 1'); return; }
+    var mode = pendingScan.mode;
+    var productCode = pendingScan.productCode;
+    if (mode === 'move') {
+      // The quantity and origin are locked in, but a move isn't submitted
+      // yet — the destination location still has to be scanned (see the
+      // 'move-destination' branch in handleDecode and performMove below).
+      pendingMove = { productCode: productCode, quantity: n, fromLocation: activeLocation };
+      closeQuantityPrompt();
+      startScan('move-destination');
+      return;
+    }
+    el.qtyConfirmBtn.disabled = true;
+    el.qtyConfirmBtn.textContent = 'Saving…';
+    submitScanEvent(mode, productCode, n).then(function(resp){
+      closeQuantityPrompt();
+      // Resume scanning immediately either way — a rejected or failed scan
+      // just means the user tries again (same code or a different one),
+      // never a dead end that needs Done + Scan again to recover from.
+      startScan(mode);
+      if (resp && resp.ok) {
+        flashOk();
+        vibrate(60);
+        playBeep();
+        if (mode === 'add') { sessionAdded += n; } else { sessionRemoved += n; }
+        renderSessionCount();
+        var label = resp.productName || productCode;
+        recordLocalEvent({
+          productCode: productCode, productName: resp.productName || '',
+          action: mode, quantity: n, location: activeLocation,
+          scannedBy: scannerName || 'Unknown', timestamp: Date.now()
+        });
+        toast((mode === 'add' ? '+' : '−') + n + ' ' + label + ' — now ' + resp.newQuantity + ' at ' + activeLocation);
+      } else {
+        flashBad();
+        vibrate([40, 70, 40]);
+        playErrorBeep();
+        toast((resp && resp.message) || 'Could not save that scan — try again.');
+      }
+    });
+  });
+
+  function handleDecode(text){
+    var now = Date.now();
+    if (text === lastDecode.text && now - lastDecode.time < 2000) return;
+    lastDecode = { text: text, time: now };
+
+    if (currentMode === 'location') {
+      if (!isLocationCode(text)) {
+        vibrate([40, 70, 40]);
+        flashBad();
+        playErrorBeep();
+        restartScan('location', '⚠ That\'s not a location code — scan the shelf\'s QR code.');
+        return;
+      }
+      activeLocation = stripLocationPrefix(text);
+      try { localStorage.setItem('wh_active_location', activeLocation); } catch(e) {}
+      sessionAdded = 0;
+      sessionRemoved = 0;
+      vibrate(70);
+      flashOk();
+      playBeep();
+      renderLocation();
+      setTimeout(stopScan, 220);
+    } else if (currentMode === 'add' || currentMode === 'remove' || currentMode === 'move') {
+      if (!activeLocation) return;
+      if (isLocationCode(text)) {
+        vibrate([40, 70, 40]);
+        flashBad();
+        playErrorBeep();
+        restartScan(currentMode, '⚠ That was a location code — scan a product code instead.');
+        return;
+      }
+      vibrate(40);
+      flashOk();
+      // Pause here and ask how many units — doesn't record anything or
+      // validate the code against the Products registry until the quantity
+      // is confirmed (see the qtyConfirmBtn handler above). For a move, this
+      // is only the FIRST half — the destination still has to be scanned
+      // (see 'move-destination' below) before anything is actually submitted.
+      openQuantityPrompt(currentMode, text);
+    } else if (currentMode === 'move-destination') {
+      if (!pendingMove) { stopScan(); return; }
+      if (!isLocationCode(text)) {
+        vibrate([40, 70, 40]);
+        flashBad();
+        playErrorBeep();
+        restartScan('move-destination', '⚠ That\'s not a location code — scan the destination shelf\'s QR code.');
+        return;
+      }
+      var destination = stripLocationPrefix(text);
+      if (destination === pendingMove.fromLocation) {
+        vibrate([40, 70, 40]);
+        flashBad();
+        playErrorBeep();
+        restartScan('move-destination', '⚠ That\'s the same location it\'s moving from — scan a different one.');
+        return;
+      }
+      vibrate(40);
+      flashOk();
+      performMove(destination);
+    }
+  }
+
+  // ---------- completing a move ----------
+  // Called once both halves of a move are known: pendingMove (product,
+  // quantity, origin — set by the qtyConfirmBtn handler) and the destination
+  // just scanned above. Submits both as one request (see submitMoveStock /
+  // handleMoveStock_ in Code.gs) rather than a separate Remove and Add.
+  function performMove(destination){
+    var move = pendingMove;
+    if (!move) { stopScan(); return; }
+    el.scanCaption.textContent = 'Saving move…';
+    submitMoveStock(move.productCode, move.fromLocation, destination, move.quantity).then(function(resp){
+      pendingMove = null;
+      if (resp && resp.ok) {
+        flashOk();
+        vibrate(60);
+        playBeep();
+        var label = resp.productName || move.productCode;
+        var moved = (typeof resp.movedQuantity === 'number') ? resp.movedQuantity : move.quantity;
+        var now = Date.now();
+        // Two feed entries, same as the two History rows Code.gs writes —
+        // one for the location it left, one for the location it landed in.
+        recordLocalEvent({
+          productCode: move.productCode, productName: resp.productName || '',
+          action: 'move out', quantity: moved, location: move.fromLocation,
+          scannedBy: scannerName || 'Unknown', timestamp: now
+        });
+        recordLocalEvent({
+          productCode: move.productCode, productName: resp.productName || '',
+          action: 'move in', quantity: moved, location: destination,
+          scannedBy: scannerName || 'Unknown', timestamp: now + 1
+        });
+        // Per Steve: after a move, treat the destination as "where you are
+        // now" rather than snapping back to the origin.
+        activeLocation = destination;
+        try { localStorage.setItem('wh_active_location', activeLocation); } catch(e) {}
+        sessionAdded = 0;
+        sessionRemoved = 0;
+        renderLocation();
+        stopScan();
+        var msg = 'Moved ' + moved + ' ' + label + ' to ' + destination;
+        if (typeof resp.requestedQuantity === 'number' && resp.requestedQuantity > moved) {
+          msg += ' (only ' + moved + ' of the ' + resp.requestedQuantity + ' requested were there to move)';
+        }
+        toast(msg);
+      } else {
+        flashBad();
+        vibrate([40, 70, 40]);
+        playErrorBeep();
+        toast((resp && resp.message) || 'Could not save that move — try scanning the destination again.');
+        // Keep the move pending and let the user rescan the destination —
+        // re-scanning the product from scratch isn't needed, only this step.
+        pendingMove = move;
+        restartScan('move-destination', scanCaptionFor('move-destination'));
+      }
+    });
+  }
+
+  el.scanLocationBtn.addEventListener('click', function(){ ensureAudio(); startScan('location'); });
+  el.changeLocationBtn.addEventListener('click', function(){ ensureAudio(); startScan('location'); });
+  el.scanAddBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanAddBtn.disabled) startScan('add'); });
+  el.scanRemoveBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanRemoveBtn.disabled) startScan('remove'); });
+  el.scanMoveBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanMoveBtn.disabled) startScan('move'); });
+  el.cancelScanBtn.addEventListener('click', stopScan);
+  el.switchCameraBtn.addEventListener('click', function(){
+    if (!availableCameras.length) return;
+    var currentIdx = -1;
+    for (var i = 0; i < availableCameras.length; i++) {
+      if (availableCameras[i].deviceId === preferredCameraId) { currentIdx = i; break; }
+    }
+    var nextIdx = (currentIdx + 1) % availableCameras.length;
+    preferredCameraId = availableCameras[nextIdx].deviceId;
+    try { localStorage.setItem('wh_camera_id', preferredCameraId); } catch(e){}
+    toast('Switched camera — remembered for next time too');
+    restartScan(currentMode, el.scanCaption.textContent);
+  });
+
+  // ---------- boot ----------
+  function boot(){
+    renderWho();
+    renderLocation();
+    renderFeed(mergeFeed());
+
+    if (window.claude && typeof window.claude.use === 'function') {
+      window.claude.use('db').then(function(ns){
+        db = ns;
+        if (db) {
+          db.doc('config/settings').get().then(function(snap){
+            if (snap.exists) {
+              var d = snap.data();
+              config.webAppUrl = d.webAppUrl || '';
+              config.scannerNames = Array.isArray(d.scannerNames) ? d.scannerNames : [];
+            }
+            renderNameChips();
+            renderRoster();
+            renderConnectionStatus();
+            if (!scannerName) openNameGate();
+          }).catch(function(){ if (!scannerName) openNameGate(); });
+
+          db.doc('config/settings').onSnapshot(function(snap){
+            if (snap.exists) {
+              var d = snap.data();
+              config.webAppUrl = d.webAppUrl || '';
+              config.scannerNames = Array.isArray(d.scannerNames) ? d.scannerNames : [];
+              renderNameChips();
+              renderRoster();
+              renderConnectionStatus();
+            }
+          });
+
+          // Scans themselves always live in the Sheet, not in any shared
+          // live-sync store, so the feed is always built by polling the
+          // Sheet's History tab regardless of whether `db` is available.
+          startFeedPolling();
+        } else {
+          loadLocalConfig();
+          renderNameChips();
+          renderConnectionStatus();
+          if (!scannerName) openNameGate();
+          startFeedPolling();
+        }
+      });
+    } else {
+      loadLocalConfig();
+      renderNameChips();
+      renderConnectionStatus();
+      if (!scannerName) openNameGate();
+      startFeedPolling();
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
+</script>
+</body>
+</html>
