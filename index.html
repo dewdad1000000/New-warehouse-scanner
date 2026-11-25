@@ -320,6 +320,36 @@
     padding:10px 16px;border-radius:999px;font-size:.85rem;z-index:40;
     box-shadow:0 8px 24px rgba(0,0,0,.35);
   }
+
+  /* Small, quiet version number next to the wordmark (2026-11-24) — Steve
+     asked for the version to show somewhere small on screen, not a big
+     banner. Deliberately low-contrast so it never competes with the
+     "Optimus" wordmark it sits beside. */
+  .version-tag{
+    font-family:var(--font-mono);font-size:.62rem;font-weight:500;
+    color:rgba(245,242,236,.45);margin-left:6px;white-space:nowrap;
+  }
+
+  /* Update-available notice (2026-11-24) — sits inline at the top of the
+     scrollable content, right under the dark header, so it can never cover
+     a button or float on top of the live camera view. Only shown once an
+     automatic or manual check finds a newer version.json than APP_VERSION;
+     never appears on its own otherwise, and never auto-reloads the page. */
+  .update-banner{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    background:var(--text);color:var(--bg);
+    border-radius:12px;padding:10px 12px;margin:14px 0 0;
+    font-size:.85rem;
+  }
+  .update-banner-text{flex:1 1 auto;font-weight:600;min-width:140px;}
+  .update-banner-btn{
+    background:var(--accent);color:var(--accent-ink);border:none;border-radius:999px;
+    padding:7px 14px;font-weight:700;font-size:.82rem;cursor:pointer;flex:none;
+  }
+  .update-banner-x{
+    background:transparent;border:none;color:var(--bg);opacity:.6;font-size:1rem;
+    cursor:pointer;padding:2px 6px;flex:none;line-height:1;
+  }
 </style>
 </head>
 <body>
@@ -369,6 +399,11 @@
       <button id="connectPrinterBtn" class="secondary-btn full" type="button">Connect Printer</button>
       <button id="printTestLabelBtn" class="secondary-btn full" type="button">Print Test Label</button>
       <p class="muted small">This is a new feature — the first test print may come out the wrong size, rotated, or mirrored. That's expected; tell Claude what you see and it can be adjusted.</p>
+
+      <p class="field-label">App Version</p>
+      <p class="muted small">You're on <span id="settingsVersionText" style="font-family:var(--font-mono);color:var(--text);font-weight:600;"></span>. Optimus quietly checks for a newer version every time it's opened — use this button any time to check by hand, in case that automatic check ever misses on a particular phone.</p>
+      <div class="status-row" id="updateStatusRow"></div>
+      <button id="checkUpdateBtn" class="secondary-btn full" type="button">Check for Updates</button>
     </div>
   </div>
 
@@ -420,13 +455,19 @@
   <div id="main">
     <header class="topbar">
       <div class="brand">
-        <span class="brand-name">Optimus</span>
+        <span class="brand-name">Optimus</span><span class="version-tag" id="versionTag"></span>
       </div>
       <div class="topbar-actions">
         <button id="whoBtn" class="pill-btn" type="button"></button>
         <button id="settingsBtn" class="icon-btn" type="button" aria-label="Settings">⚙</button>
       </div>
     </header>
+
+    <div id="updateBanner" class="update-banner" hidden>
+      <span class="update-banner-text">A newer version of Optimus is available.</span>
+      <button id="updateNowBtn" type="button" class="update-banner-btn">Update Now</button>
+      <button id="dismissUpdateBtn" type="button" class="update-banner-x" aria-label="Dismiss for now">✕</button>
+    </div>
 
     <section class="location-banner is-empty" id="locationBanner">
       <div>
@@ -514,6 +555,10 @@
   // (or edit DEFAULT_WEB_APP_URL below and re-upload) if you ever redeploy
   // and get a new URL.
   var DEFAULT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw8OXNIe5W92f7DNoobO9n6W-3Jfeu9xqmG3LVpi1iwzZ49hIwqybad6M6mg6f8XLFV8A/exec';
+  // Bump this, and the matching number in version.json, every time a new
+  // zip goes out (2026-11-24). The two are compared to power the version
+  // display and the update checker below — see that section for details.
+  var APP_VERSION = 2;
   var db = null;
   var scannerName = localStorage.getItem('wh_scanner_name') || '';
   var activeLocation = localStorage.getItem('wh_active_location') || '';
@@ -573,8 +618,13 @@
    'openProductBtn','productOverlay','closeProductBtn','productFormView','productNameInput','productGenerateBtn',
    'productResultView','productResultCode','productResultName','productResultQr','productAddAnotherBtn','productDoneBtn',
    'productRecentList','productRecentEmpty',
-   'printerStatusRow','connectPrinterBtn','printTestLabelBtn','printProductLabelBtn'
+   'printerStatusRow','connectPrinterBtn','printTestLabelBtn','printProductLabelBtn',
+   'versionTag','settingsVersionText','updateStatusRow','checkUpdateBtn',
+   'updateBanner','updateNowBtn','dismissUpdateBtn'
   ].forEach(function(id){ el[id] = document.getElementById(id); });
+
+  el.versionTag.textContent = 'v' + APP_VERSION;
+  el.settingsVersionText.textContent = 'v' + APP_VERSION;
 
   // ---------- helpers ----------
   function toast(msg){
@@ -737,6 +787,67 @@
       toast('Saved on this phone');
     }
   });
+
+  // ---------- version / update checker (2026-11-24) ----------
+  // A tiny version.json file sits next to index.html on GitHub Pages and
+  // gets its number bumped with every release, same as APP_VERSION above.
+  // Comparing the two is the whole mechanism — no service worker, no
+  // install step, just a small fetch. Automatic checks only ever show the
+  // quiet banner; they never reload the page on their own, so an update
+  // never interrupts someone mid-scan. The banner's own "Update Now"
+  // button, and the manual "Check for Updates" button in Settings, are the
+  // only things that actually reload.
+  var updateDismissedThisSession = false;
+
+  function applyUpdate(){
+    // A plain reload can still be served from cache; changing the URL's
+    // query string forces the browser to treat it as a new page and fetch
+    // fresh, regardless of what GitHub Pages' cache headers say.
+    window.location.href = window.location.pathname + '?v=' + Date.now();
+  }
+
+  function setUpdateStatus(text, cls){
+    if (!el.updateStatusRow) return;
+    el.updateStatusRow.textContent = text;
+    el.updateStatusRow.className = 'status-row' + (cls ? ' ' + cls : '');
+  }
+
+  function checkForUpdate(manual){
+    if (manual) setUpdateStatus('Checking…');
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+      .then(function(res){
+        if (!res.ok) throw new Error('status ' + res.status);
+        return res.json();
+      })
+      .then(function(data){
+        var remote = Number(data && data.version) || APP_VERSION;
+        if (remote > APP_VERSION) {
+          if (!updateDismissedThisSession) el.updateBanner.hidden = false;
+          if (manual) setUpdateStatus('A newer version (v' + remote + ') is available — tap Update Now in the bar at the top of the screen.', 'warn');
+        } else if (manual) {
+          setUpdateStatus('You’re on the latest version (v' + APP_VERSION + ').', 'good');
+        }
+      })
+      .catch(function(){
+        if (manual) setUpdateStatus('Could not check for updates right now — check your connection and try again.', 'warn');
+      });
+  }
+
+  el.updateNowBtn.addEventListener('click', applyUpdate);
+  el.dismissUpdateBtn.addEventListener('click', function(){
+    updateDismissedThisSession = true;
+    el.updateBanner.hidden = true;
+  });
+  el.checkUpdateBtn.addEventListener('click', function(){ checkForUpdate(true); });
+
+  // Silent automatic checks: once shortly after the app opens (see boot()),
+  // again whenever the phone comes back to this tab/app after being
+  // backgrounded, and every 15 minutes while it's left open. None of these
+  // ever show anything unless a newer version actually exists.
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible') checkForUpdate(false);
+  });
+  setInterval(function(){ checkForUpdate(false); }, 15 * 60 * 1000);
 
   // ---------- add new product (auto-generated code) ----------
   // A short, keyless public QR-rendering service — purely a convenience so
@@ -1777,6 +1888,7 @@
     renderWho();
     renderLocation();
     renderFeed(mergeFeed());
+    checkForUpdate(false);
 
     if (window.claude && typeof window.claude.use === 'function') {
       window.claude.use('db').then(function(ns){
