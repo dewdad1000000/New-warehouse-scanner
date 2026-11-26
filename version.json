@@ -1,5 +1,5 @@
 {
-  "version": 2,
-  "released": "2026-11-24",
-  "notes": "Added a small version number next to the Optimus wordmark, plus automatic and manual update checking."
+  "version": 3,
+  "released": "2026-11-26",
+  "notes": "Move Stock no longer requires scanning the origin location first — scan the product, and the app looks up where it's currently recorded automatically."
 }
