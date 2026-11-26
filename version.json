@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "released": "2026-11-26",
-  "notes": "Move Stock no longer requires scanning the origin location first — scan the product, and the app looks up where it's currently recorded automatically."
+  "notes": "Redesigned to three buttons (Scan Location, Sold, Move Stock) with no separate Add Stock button, a persistent status panel under the buttons, full-text live activity, and Sold/Move that find a product's current location automatically."
 }

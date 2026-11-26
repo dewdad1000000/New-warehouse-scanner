@@ -113,11 +113,11 @@
     padding:16px 18px;margin-bottom:14px;
   }
   .location-code{
-    font-family:var(--font-mono);font-size:1.3rem;font-weight:600;
+    font-family:var(--font-mono);font-size:1.65rem;font-weight:700;
     color:var(--accent);letter-spacing:.02em;
     word-break:break-word;
   }
-  .location-banner.is-empty .location-code{color:var(--text-dim);font-family:var(--font-body);font-size:1rem;font-weight:500;}
+  .location-banner.is-empty .location-code{color:var(--text-dim);font-family:var(--font-body);font-size:1.1rem;font-weight:500;}
   .ghost-btn{
     background:transparent;border:1px solid var(--border);color:var(--text);
     border-radius:10px;padding:8px 12px;font-size:.82rem;font-weight:600;flex-shrink:0;
@@ -147,6 +147,20 @@
   .action-btn.danger .action-icon{color:var(--bad);}
   .action-btn.danger:disabled .action-icon{color:var(--text-dim);}
 
+  /* ---------- scan status panel (2026-11-26) ---------- */
+  /* Sits directly under the three scan buttons and stays showing whatever
+     happened last ("Scan accepted", a warning, an error) until the NEXT
+     scan replaces it — unlike the floating .toast below, which still
+     auto-dismisses and is used for non-scanning notices (Settings, the
+     label printer, etc.) so this panel is never cluttered with those. */
+  .scan-status{
+    background:var(--surface);border:1px solid var(--border-soft);border-radius:12px;
+    padding:12px 14px;margin-bottom:14px;
+  }
+  .scan-status-text{font-size:.92rem;line-height:1.45;color:var(--text-dim);}
+  .scan-status.is-ok .scan-status-text{color:var(--good);font-weight:600;}
+  .scan-status.is-error .scan-status-text{color:var(--bad);font-weight:600;}
+
   /* ---------- quantity prompt ---------- */
   .qty-stepper{display:flex;align-items:center;justify-content:center;gap:14px;margin-block:8px;}
   .qty-stepper .icon-btn{width:52px;height:52px;font-size:1.5rem;}
@@ -169,11 +183,11 @@
   .feed-head h2{font-size:1rem;}
   .feed-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;}
   .feed-row{
-    display:flex;align-items:center;gap:10px;
+    display:flex;align-items:flex-start;gap:10px;
     background:var(--surface);border:1px solid var(--border-soft);border-radius:12px;
     padding:10px 12px;
   }
-  .feed-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--text-dim);}
+  .feed-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--text-dim);margin-top:5px;}
   /* Every row shown here is already confirmed written to the Sheet (the
      scanner only shows it after a successful server response), so the dot
      now signals the action (Add vs. Remove) rather than a sync state. */
@@ -181,8 +195,10 @@
   .feed-dot.remove{background:var(--accent);}
   .feed-dot.move{background:#1E4A7A;}
   .feed-main{flex:1;min-width:0;}
-  .feed-item{font-family:var(--font-mono);font-size:.88rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .feed-sub{font-size:.76rem;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* Full text, wrapping onto as many lines as it needs (2026-11-26) — this
+     used to cut every message off after one line with an ellipsis. */
+  .feed-item{font-family:var(--font-mono);font-size:.88rem;font-weight:600;white-space:normal;word-break:break-word;}
+  .feed-sub{font-size:.76rem;color:var(--text-dim);white-space:normal;word-break:break-word;}
   .feed-time{font-family:var(--font-mono);font-size:.72rem;color:var(--text-dim);flex-shrink:0;font-variant-numeric:tabular-nums;}
   .feed-empty{
     border:1px dashed var(--border);border-radius:12px;padding:20px 16px;text-align:center;line-height:1.5;
@@ -432,9 +448,14 @@
         <p id="productResultName" class="muted small"></p>
         <img id="productResultQr" class="qr-image" alt="QR code for this product — optional, for screenshotting or printing directly" onerror="this.style.display='none'" onload="this.style.display='block'" />
         <p class="muted small">Type the code above into your label maker, or screenshot the QR code if that's easier.</p>
+        <!-- 2026-11-26: registering a code no longer puts it in inventory by
+             itself (there's no separate Add Stock button to do that
+             afterward) — this is the one place that starts that scan, so a
+             brand-new code never sits registered-but-unplaced. -->
+        <button id="productPlaceBtn" class="primary-btn full" type="button">📍 Scan It Into a Location</button>
         <button id="printProductLabelBtn" class="secondary-btn full" type="button">🖶 Print Label</button>
         <button id="productAddAnotherBtn" class="secondary-btn full" type="button">Add Another</button>
-        <button id="productDoneBtn" class="primary-btn full" type="button">Done</button>
+        <button id="productDoneBtn" class="secondary-btn full" type="button">Done — I'll place it later</button>
       </div>
 
       <p class="field-label">Recently added</p>
@@ -458,15 +479,17 @@
     </div>
   </div>
 
-  <!-- Move Stock "which location?" picker (2026-11-26) — only ever shown
-       when a scanned product turns out to be recorded at more than one
-       location at once (rare); the app looks this up itself, so there's
-       no "scan the origin first" step before this any more. -->
+  <!-- "Which location?" picker (2026-11-26) — shared by Move Stock and
+       Sold. Only ever shown when a scanned product turns out to be
+       recorded at more than one location at once (rare); both flows look
+       this up automatically, so there's no "scan the origin first" step
+       before this any more. Eyebrow/description text is filled in by JS
+       (openLocationPicker) since the same markup serves both modes. -->
   <div id="moveLocationOverlay" class="overlay" hidden>
     <div class="overlay-card">
-      <p class="eyebrow">Move Stock</p>
+      <p class="eyebrow" id="locPickerEyebrow">Move Stock</p>
       <h1>Which location?</h1>
-      <p class="muted small">Code <span id="moveLocProductCode" style="font-family:var(--font-mono);color:var(--text);font-weight:600;"></span> is currently recorded in more than one spot — tap the one you're moving it from.</p>
+      <p class="muted small">Code <span id="moveLocProductCode" style="font-family:var(--font-mono);color:var(--text);font-weight:600;"></span> is currently recorded in more than one spot — <span id="locPickerDesc">tap the one you're moving it from</span>.</p>
       <div id="moveLocationList" class="move-location-list"></div>
       <button id="moveLocationCancelBtn" class="secondary-btn full" type="button">Cancel — keep scanning</button>
     </div>
@@ -494,7 +517,6 @@
         <p class="eyebrow" id="locationLabel">No location set</p>
         <p class="location-code" id="locationCode">Scan a location QR to begin</p>
       </div>
-      <button id="changeLocationBtn" class="ghost-btn" type="button" hidden>Change</button>
     </section>
 
     <section class="scan-actions single">
@@ -504,22 +526,25 @@
       </button>
     </section>
 
+    <!-- Add Stock has no button of its own (2026-11-26) — scanning a
+         location above already drops straight into scanning products to
+         add there; see the 'location' branch of handleDecode. These two
+         are for the other two things you'd do once a location is set:
+         selling inventory out of wherever it's currently recorded, or
+         moving it to the location just scanned above. -->
     <section class="scan-actions">
-      <button id="scanRemoveBtn" class="action-btn outline danger" type="button" disabled>
-        <span class="action-icon">−</span>
-        <span>Remove Stock</span>
+      <button id="scanSoldBtn" class="action-btn outline" type="button" disabled>
+        <span class="action-icon">$</span>
+        <span>Sold</span>
       </button>
-      <button id="scanAddBtn" class="action-btn primary" type="button" disabled>
-        <span class="action-icon">+</span>
-        <span>Add Stock</span>
-      </button>
-    </section>
-
-    <section class="scan-actions single">
       <button id="scanMoveBtn" class="action-btn outline" type="button" disabled>
         <span class="action-icon">⇄</span>
         <span>Move Stock</span>
       </button>
+    </section>
+
+    <section class="scan-status" id="scanStatus">
+      <p class="scan-status-text" id="scanStatusText">Scan a location to begin.</p>
     </section>
 
     <p class="session-count" id="sessionCount" hidden></p>
@@ -578,7 +603,7 @@
   // Bump this, and the matching number in version.json, every time a new
   // zip goes out (2026-11-24). The two are compared to power the version
   // display and the update checker below — see that section for details.
-  var APP_VERSION = 3;
+  var APP_VERSION = 4;
   var db = null;
   var scannerName = localStorage.getItem('wh_scanner_name') || '';
   var activeLocation = localStorage.getItem('wh_active_location') || '';
@@ -589,7 +614,7 @@
   var sessionRemoved = 0;
   var config = { webAppUrl: DEFAULT_WEB_APP_URL, scannerNames: [] };
   var feedPollTimer = null;
-  var currentMode = null; // 'location' | 'add' | 'remove'
+  var currentMode = null; // 'location' | 'add' | 'move' | 'sold'
   var codeReader = null;
   var scanControls = null;
   // Some phones with 3+ rear lenses (several Samsung Galaxy models among
@@ -606,20 +631,16 @@
   var lastDecode = { text: '', time: 0 };
   // pendingScan holds the product code + mode between a successful decode
   // and the user confirming (or cancelling) the quantity prompt for it.
+  // Used by 'add' (quantity to add) and, since 2026-11-26, 'sold' (quantity
+  // to sell, at whatever location the lookup below resolved it to).
+  // resolvedLocation/resolvedQty carry that lookup result through to the
+  // qtyConfirmBtn handler for 'sold'; they're unused for 'add'.
   var pendingScan = null;
-  // pendingMove holds {productCode, quantity, fromLocation} for a Move
-  // Stock in progress, between the quantity prompt being confirmed and the
-  // destination location actually being scanned (see performMove below) —
-  // a move needs this extra step beyond pendingScan's single decode/confirm
-  // round trip. Cleared by stopScan() so cancelling out of the destination
-  // scan never leaves a stale move hanging around.
-  // fromLocation is resolved automatically (2026-11-26) from a lookup keyed
-  // only on the scanned product — see beginMoveLookup — rather than coming
-  // from whatever location happened to be "active." It can be '' (empty)
-  // when the product isn't currently recorded anywhere; performMove treats
-  // that case as a plain Add at the destination instead of a real move,
-  // since there's nothing to move FROM.
-  var pendingMove = null;
+  // Move Stock no longer has a pendingMove spanning multiple scans
+  // (2026-11-26) — the destination is simply whatever's already active
+  // (set only by the Scan Location button), so a product scan in 'move'
+  // mode now resolves its origin and submits the move in one go, with
+  // nothing left pending in between.
   // Every event in the live feed below has already been confirmed written to
   // the Sheet by the server (the scanner only shows it after a successful
   // response) — there is no offline queue or retry-sync concept any more,
@@ -635,15 +656,16 @@
   ['nameGate','nameChips','nameForm','nameInput',
    'settingsOverlay','settingsBtn','closeSettingsBtn','webAppUrlInput','connectionStatus','saveUrlBtn',
    'rosterChips','rosterForm','rosterInput',
-   'whoBtn','locationBanner','locationLabel','locationCode','changeLocationBtn',
-   'scanLocationBtn','scanAddBtn','scanRemoveBtn','scanMoveBtn','sessionCount',
+   'whoBtn','locationBanner','locationLabel','locationCode',
+   'scanLocationBtn','scanSoldBtn','scanMoveBtn','sessionCount',
+   'scanStatus','scanStatusText',
    'feedList','feedEmpty','feedMeta',
    'viewfinder','video','scanCaption','cancelScanBtn','scanFlash','switchCameraBtn',
    'vfLocationLabel','vfLocationName','vfCountBadge','scanCheck',
    'qtyOverlay','qtyActionLabel','qtyProductCode','qtyLocationName','qtyInput','qtyMinusBtn','qtyPlusBtn','qtyConfirmBtn','qtyCancelBtn',
-   'moveLocationOverlay','moveLocProductCode','moveLocationList','moveLocationCancelBtn',
+   'moveLocationOverlay','locPickerEyebrow','locPickerDesc','moveLocProductCode','moveLocationList','moveLocationCancelBtn',
    'openProductBtn','productOverlay','closeProductBtn','productFormView','productNameInput','productGenerateBtn',
-   'productResultView','productResultCode','productResultName','productResultQr','productAddAnotherBtn','productDoneBtn',
+   'productResultView','productResultCode','productResultName','productResultQr','productPlaceBtn','productAddAnotherBtn','productDoneBtn',
    'productRecentList','productRecentEmpty',
    'printerStatusRow','connectPrinterBtn','printTestLabelBtn','printProductLabelBtn',
    'versionTag','settingsVersionText','updateStatusRow','checkUpdateBtn',
@@ -660,6 +682,19 @@
     t.textContent = msg;
     document.body.appendChild(t);
     setTimeout(function(){ t.remove(); }, 2600);
+  }
+
+  // The persistent status panel under the scan buttons (2026-11-26, per
+  // Steve) — unlike toast() above, this never auto-dismisses. It just sits
+  // there showing whatever the last scan did until the NEXT scan replaces
+  // it, so a warning can't be missed just because it faded out. Only
+  // scanning-related outcomes go through here; Settings/printer/etc. still
+  // use the ordinary toast().
+  function setScanStatus(msg, kind){
+    el.scanStatusText.textContent = msg;
+    el.scanStatus.classList.remove('is-ok', 'is-error');
+    if (kind === 'ok') el.scanStatus.classList.add('is-ok');
+    else if (kind === 'error') el.scanStatus.classList.add('is-error');
   }
 
   function relTime(ts){
@@ -691,25 +726,24 @@
     el.whoBtn.textContent = scannerName ? scannerName : 'Set name';
   }
   function renderLocation(){
-    // Move Stock no longer needs an active location scanned first
-    // (2026-11-26) — it figures out the product's current location(s) on
-    // its own, so it's always available, unlike Add/Remove which still
-    // need to know where you're standing.
-    el.scanMoveBtn.disabled = false;
+    // Move Stock and Sold both need a location already active — Move uses
+    // it as the destination, and Sold just needs *a* "you're set up and
+    // ready" location to be consistent with the other two buttons, even
+    // though the actual sale is recorded wherever the lookup finds the
+    // product (2026-11-26). Location only ever changes via the Scan
+    // Location button (per Steve) — nothing else here can set it.
     if (activeLocation) {
       el.locationBanner.classList.remove('is-empty');
       el.locationLabel.textContent = 'Scanning into';
       el.locationCode.textContent = activeLocation;
-      el.changeLocationBtn.hidden = false;
-      el.scanAddBtn.disabled = false;
-      el.scanRemoveBtn.disabled = false;
+      el.scanSoldBtn.disabled = false;
+      el.scanMoveBtn.disabled = false;
     } else {
       el.locationBanner.classList.add('is-empty');
       el.locationLabel.textContent = 'No location set';
       el.locationCode.textContent = 'Scan a location QR to begin';
-      el.changeLocationBtn.hidden = true;
-      el.scanAddBtn.disabled = true;
-      el.scanRemoveBtn.disabled = true;
+      el.scanSoldBtn.disabled = true;
+      el.scanMoveBtn.disabled = true;
     }
     renderSessionCount();
   }
@@ -972,6 +1006,11 @@
 
   el.productAddAnotherBtn.addEventListener('click', showProductForm);
   el.productDoneBtn.addEventListener('click', function(){ el.productOverlay.hidden = true; });
+  el.productPlaceBtn.addEventListener('click', function(){
+    el.productOverlay.hidden = true;
+    ensureAudio();
+    startScan('location');
+  });
 
   // ---------- label printer (Polono P31S over Web Bluetooth) ----------
   // Built from a hobbyist reverse-engineering of this printer's Bluetooth
@@ -1256,11 +1295,16 @@
   // server: only the Sheet's "Products" tab knows whether a code is really
   // registered, so there's no safe way to accept a scan optimistically and
   // sync it later. The quantity-prompt Confirm button awaits this directly.
-  function submitScanEvent(mode, productCode, quantity){
+  // `location` defaults to the globally active one (the normal Add case),
+  // but Sold passes its own resolved location explicitly (2026-11-26) —
+  // the product you're selling isn't necessarily wherever you're currently
+  // scanning into, since Sold finds it via lookup rather than requiring you
+  // to be standing at that shelf.
+  function submitScanEvent(mode, productCode, quantity, location){
     var action = mode === 'add' ? 'add' : 'remove';
     var payload = {
       op: 'scanEvent',
-      productCode: productCode, location: activeLocation, action: action,
+      productCode: productCode, location: location || activeLocation, action: action,
       quantity: quantity, scannedBy: scannerName || 'Unknown', timestamp: Date.now()
     };
     if (!config.webAppUrl) {
@@ -1557,16 +1601,15 @@
   }
 
   function renderViewfinderHeader(){
-    // 'move'/'move-destination' don't show activeLocation up here any more
-    // (2026-11-26) — it's no longer necessarily where the product's coming
-    // from, so showing it as "Scanning into X" during a move would be
-    // misleading. See beginMoveLookup for how the real origin is found.
     if (currentMode === 'move') {
-      el.vfLocationLabel.textContent = 'Move Stock';
+      el.vfLocationLabel.textContent = 'Moving to';
+      el.vfLocationName.textContent = activeLocation || '—';
+    } else if (currentMode === 'sold') {
+      // Sold doesn't show activeLocation up here (2026-11-26) — it isn't
+      // necessarily where the product's coming from, since Sold finds that
+      // itself via lookup. See beginSoldLookup.
+      el.vfLocationLabel.textContent = 'Sold';
       el.vfLocationName.textContent = 'scan the product';
-    } else if (currentMode === 'move-destination') {
-      el.vfLocationLabel.textContent = 'Move Stock';
-      el.vfLocationName.textContent = 'scan the destination';
     } else {
       el.vfLocationLabel.textContent = 'Scanning into';
       el.vfLocationName.textContent = activeLocation || '—';
@@ -1574,9 +1617,9 @@
     if (currentMode === 'add' && sessionAdded > 0) {
       el.vfCountBadge.hidden = false;
       el.vfCountBadge.textContent = sessionAdded + ' added';
-    } else if (currentMode === 'remove' && sessionRemoved > 0) {
+    } else if (currentMode === 'sold' && sessionRemoved > 0) {
       el.vfCountBadge.hidden = false;
-      el.vfCountBadge.textContent = sessionRemoved + ' removed';
+      el.vfCountBadge.textContent = sessionRemoved + ' sold';
     } else {
       el.vfCountBadge.hidden = true;
     }
@@ -1628,18 +1671,17 @@
     });
   }
 
-  // The caption shown above the camera view for each scan mode. Pulled out
-  // of startScan into its own function since there are now five modes
-  // (location, add, remove, move, move-destination) rather than three.
+  // The caption shown above the camera view for each scan mode. Location
+  // only ever changes via the Scan Location button (2026-11-26, per
+  // Steve), so Move and Sold both just use whatever's already active —
+  // there's no separate "now scan the destination" step inside either one
+  // any more.
   function scanCaptionFor(mode){
     switch (mode) {
       case 'location': return 'Point at the location QR code';
       case 'add': return 'Adding stock at ' + activeLocation + ' — point at a product QR code.';
-      case 'remove': return 'Removing stock at ' + activeLocation + ' — point at a product QR code.';
-      // No "moving stock from X" here any more (2026-11-26) — the origin
-      // isn't known yet at this step, see beginMoveLookup/handleDecode.
-      case 'move': return 'Move Stock — point at the product\'s QR code.';
-      case 'move-destination': return 'Now point at the DESTINATION location\'s QR code.';
+      case 'move': return 'Moving stock to ' + activeLocation + ' — point at a product QR code.';
+      case 'sold': return 'Marking stock sold — point at a product QR code.';
       default: return '';
     }
   }
@@ -1712,10 +1754,6 @@
     if (scanControls) { try { scanControls.stop(); } catch(e){} scanControls = null; }
     el.viewfinder.hidden = true;
     currentMode = null;
-    // Cancelling out of a Move Stock flow at any point (including the
-    // destination-scan step) should drop the pending move entirely rather
-    // than leave it around for some later scan to accidentally pick up.
-    pendingMove = null;
   }
 
   // Stops the camera stream without hiding the viewfinder's own hidden-state
@@ -1726,29 +1764,27 @@
     codeReader = null;
   }
 
-  // ---------- quantity prompt (Add/Remove/Move) ----------
-  // For Add/Remove, moveOrigin/moveOriginQty are unused. For Move
-  // (2026-11-26), moveOrigin is whatever beginMoveLookup resolved before
-  // this was ever shown: the one location the product's currently recorded
-  // at (moveOriginQty is how many are there), or '' if it isn't currently
-  // recorded anywhere. That resolved origin is stashed on pendingScan so
-  // the qtyConfirmBtn handler below can carry it into pendingMove without
-  // re-deriving it.
-  function openQuantityPrompt(mode, productCode, moveOrigin, moveOriginQty){
+  // ---------- quantity prompt (Add / Sold) ----------
+  // mode is 'add' or 'sold' — Move Stock doesn't use this overlay any more
+  // (2026-11-26): since it always moves everything in one go (per Steve —
+  // units of the same SKU move together), there's nothing left to ask.
+  // resolvedLocation/availableQty are only meaningful for 'sold', where the
+  // product's current location was just found by beginSoldLookup rather
+  // than being wherever's currently active.
+  function openQuantityPrompt(mode, productCode, resolvedLocation, availableQty){
     pauseScan();
-    pendingScan = { mode: mode, productCode: productCode, resolvedOrigin: moveOrigin || '' };
-    el.qtyActionLabel.textContent = mode === 'add' ? 'Add Stock' : (mode === 'remove' ? 'Remove Stock' : 'Move Stock');
+    pendingScan = { mode: mode, productCode: productCode, resolvedLocation: resolvedLocation || '', availableQty: availableQty };
+    el.qtyActionLabel.textContent = mode === 'add' ? 'Add Stock' : 'Sold';
     el.qtyProductCode.textContent = productCode;
-    if (mode === 'move') {
-      el.qtyLocationName.textContent = moveOrigin
-        ? ('moving from ' + moveOrigin + (typeof moveOriginQty === 'number' ? ' (' + moveOriginQty + ' on hand)' : ''))
-        : 'not currently recorded anywhere — this will add it at the new location';
+    if (mode === 'sold') {
+      el.qtyLocationName.textContent = 'selling from ' + resolvedLocation + (typeof availableQty === 'number' ? ' (' + availableQty + ' on hand)' : '');
     } else {
       el.qtyLocationName.textContent = activeLocation;
     }
     el.qtyInput.value = '1';
+    el.qtyInput.max = (mode === 'sold' && typeof availableQty === 'number') ? String(availableQty) : '';
     el.qtyConfirmBtn.disabled = false;
-    el.qtyConfirmBtn.textContent = mode === 'move' ? 'Next: Scan Destination' : 'Confirm';
+    el.qtyConfirmBtn.textContent = 'Confirm';
     el.viewfinder.hidden = true;
     el.qtyOverlay.hidden = false;
     setTimeout(function(){ try { el.qtyInput.focus(); el.qtyInput.select(); } catch(e){} }, 30);
@@ -1763,6 +1799,8 @@
     var n = parseInt(el.qtyInput.value, 10);
     if (!Number.isFinite(n)) n = 1;
     n = Math.max(1, n + delta);
+    var max = parseInt(el.qtyInput.max, 10);
+    if (Number.isFinite(max) && max > 0) n = Math.min(n, max);
     el.qtyInput.value = String(n);
   }
 
@@ -1779,23 +1817,18 @@
     if (!pendingScan) return;
     var n = parseInt(el.qtyInput.value, 10);
     if (!Number.isFinite(n) || n < 1) { toast('Enter a quantity of at least 1'); return; }
-    var mode = pendingScan.mode;
+    var mode = pendingScan.mode; // 'add' or 'sold'
     var productCode = pendingScan.productCode;
-    if (mode === 'move') {
-      // The quantity and origin are locked in (resolvedOrigin came from
-      // beginMoveLookup, possibly '' if the product isn't currently
-      // recorded anywhere), but a move isn't submitted yet — the
-      // destination location still has to be scanned (see the
-      // 'move-destination' branch in handleDecode and performMove below).
-      var resolvedOrigin = pendingScan.resolvedOrigin || '';
-      pendingMove = { productCode: productCode, quantity: n, fromLocation: resolvedOrigin };
-      closeQuantityPrompt();
-      startScan('move-destination');
-      return;
+    var soldFrom = pendingScan.resolvedLocation || '';
+    if (mode === 'sold' && typeof pendingScan.availableQty === 'number') {
+      n = Math.min(n, pendingScan.availableQty);
     }
     el.qtyConfirmBtn.disabled = true;
     el.qtyConfirmBtn.textContent = 'Saving…';
-    submitScanEvent(mode, productCode, n).then(function(resp){
+    // Sold records against the location the lookup resolved to (soldFrom),
+    // not whatever's currently active — Add still uses activeLocation,
+    // handled by submitScanEvent's own default when no location is passed.
+    submitScanEvent(mode === 'sold' ? 'remove' : 'add', productCode, n, mode === 'sold' ? soldFrom : null).then(function(resp){
       closeQuantityPrompt();
       // Resume scanning immediately either way — a rejected or failed scan
       // just means the user tries again (same code or a different one),
@@ -1805,20 +1838,26 @@
         flashOk();
         vibrate(60);
         playBeep();
+        var label = resp.productName || productCode;
+        var loc = mode === 'sold' ? soldFrom : activeLocation;
         if (mode === 'add') { sessionAdded += n; } else { sessionRemoved += n; }
         renderSessionCount();
-        var label = resp.productName || productCode;
         recordLocalEvent({
           productCode: productCode, productName: resp.productName || '',
-          action: mode, quantity: n, location: activeLocation,
+          action: mode === 'sold' ? 'remove' : 'add', quantity: n, location: loc,
           scannedBy: scannerName || 'Unknown', timestamp: Date.now()
         });
-        toast((mode === 'add' ? '+' : '−') + n + ' ' + label + ' — now ' + resp.newQuantity + ' at ' + activeLocation);
+        if (mode === 'add') {
+          setScanStatus('Added ' + n + ' ' + label + ' — now ' + resp.newQuantity + ' at ' + loc + '.', 'ok');
+        } else {
+          setScanStatus('Sold ' + n + ' ' + label + ' from ' + loc + ' — ' +
+            (resp.newQuantity > 0 ? resp.newQuantity + ' left there.' : 'none left there.'), 'ok');
+        }
       } else {
         flashBad();
         vibrate([40, 70, 40]);
         playErrorBeep();
-        toast((resp && resp.message) || 'Could not save that scan — try again.');
+        setScanStatus((resp && resp.message) || 'Could not save that scan — try again.', 'error');
       }
     });
   });
@@ -1833,6 +1872,7 @@
         vibrate([40, 70, 40]);
         flashBad();
         playErrorBeep();
+        setScanStatus('That\'s not a location code — scan the shelf\'s QR code.', 'error');
         restartScan('location', '⚠ That\'s not a location code — scan the shelf\'s QR code.');
         return;
       }
@@ -1844,14 +1884,20 @@
       flashOk();
       playBeep();
       renderLocation();
-      setTimeout(stopScan, 220);
-    } else if (currentMode === 'add' || currentMode === 'remove') {
+      setScanStatus('Location set to ' + activeLocation + '. Scanning products now adds them here.', 'ok');
+      // Scan Location is the only thing that ever changes the active
+      // location (2026-11-26, per Steve) — there's no separate Add Stock
+      // button any more, so capturing the location rolls straight into
+      // scanning products to add, instead of stopping here like it used to.
+      setTimeout(function(){ restartScan('add', scanCaptionFor('add')); }, 220);
+    } else if (currentMode === 'add') {
       if (!activeLocation) return;
       if (isLocationCode(text)) {
         vibrate([40, 70, 40]);
         flashBad();
         playErrorBeep();
-        restartScan(currentMode, '⚠ That was a location code — scan a product code instead.');
+        setScanStatus('That was a location code — to change location, cancel and tap Scan Location.', 'error');
+        restartScan('add', '⚠ That was a location code — to change location, cancel and tap Scan Location.');
         return;
       }
       vibrate(40);
@@ -1859,81 +1905,44 @@
       // Pause here and ask how many units — doesn't record anything or
       // validate the code against the Products registry until the quantity
       // is confirmed (see the qtyConfirmBtn handler above).
-      openQuantityPrompt(currentMode, text);
+      openQuantityPrompt('add', text);
     } else if (currentMode === 'move') {
-      // Move Stock no longer requires an active location scanned first
-      // (2026-11-26) — scanning the product is enough; beginMoveLookup asks
-      // the sheet where it's currently recorded instead of trusting
-      // whatever location happened to be active.
+      if (!activeLocation) return;
       if (isLocationCode(text)) {
         vibrate([40, 70, 40]);
         flashBad();
         playErrorBeep();
-        restartScan('move', '⚠ That was a location code — scan a product code instead.');
+        setScanStatus('That was a location code — to change the destination, cancel and tap Scan Location.', 'error');
+        restartScan('move', '⚠ That was a location code — to change the destination, cancel and tap Scan Location.');
         return;
       }
       vibrate(40);
       flashOk();
       beginMoveLookup(text);
-    } else if (currentMode === 'move-destination') {
-      if (!pendingMove) { stopScan(); return; }
-      if (!isLocationCode(text)) {
+    } else if (currentMode === 'sold') {
+      if (isLocationCode(text)) {
         vibrate([40, 70, 40]);
         flashBad();
         playErrorBeep();
-        restartScan('move-destination', '⚠ That\'s not a location code — scan the destination shelf\'s QR code.');
-        return;
-      }
-      var destination = stripLocationPrefix(text);
-      if (destination === pendingMove.fromLocation) {
-        vibrate([40, 70, 40]);
-        flashBad();
-        playErrorBeep();
-        restartScan('move-destination', '⚠ That\'s the same location it\'s moving from — scan a different one.');
+        setScanStatus('That was a location code — scan a product code instead.', 'error');
+        restartScan('sold', '⚠ That was a location code — scan a product code instead.');
         return;
       }
       vibrate(40);
       flashOk();
-      performMove(destination);
+      beginSoldLookup(text);
     }
   }
 
-  // ---------- finding a move's origin (2026-11-26) ----------
-  // Called right after a product is scanned in 'move' mode. Instead of
-  // trusting whatever location happened to be active, this asks Code.gs's
-  // new ?action=productLocations where the product is ACTUALLY recorded
-  // right now, then branches three ways:
-  //   - not recorded anywhere  → openQuantityPrompt with no origin; the
-  //     eventual destination scan will just add it fresh (see performMove).
-  //   - recorded in exactly one place → that's the origin, no prompt needed.
-  //   - recorded in more than one place (rare) → openMoveLocationPicker lets
-  //     the person pick which one, which also doubles as a quick way to
-  //     spot a product that's split across shelves (Steve, 2026-11-25).
-  function beginMoveLookup(productCode){
-    pauseScan();
-    el.scanCaption.textContent = 'Looking up ' + productCode + '…';
-    fetchProductLocations(productCode).then(function(resp){
-      if (!resp || !resp.ok) {
-        flashBad();
-        vibrate([40, 70, 40]);
-        playErrorBeep();
-        toast((resp && resp.message) || 'Could not look up that product — check your connection and try again.');
-        restartScan('move', scanCaptionFor('move'));
-        return;
-      }
-      var locations = Array.isArray(resp.locations) ? resp.locations : [];
-      if (locations.length > 1) {
-        locations.sort(function(a, b){ return b.quantity - a.quantity; });
-        openMoveLocationPicker(productCode, locations);
-      } else if (locations.length === 1) {
-        openQuantityPrompt('move', productCode, locations[0].location, locations[0].quantity);
-      } else {
-        openQuantityPrompt('move', productCode, '', null);
-      }
-    });
-  }
-
-  function openMoveLocationPicker(productCode, locations){
+  // ---------- "which location?" picker — shared by Move and Sold ----------
+  // Only ever shown when a scanned product turns out to be recorded at more
+  // than one location at once (rare). lastPickerMode remembers which flow
+  // opened it, so Cancel resumes the right one.
+  var lastPickerMode = null;
+  function openLocationPicker(mode, productCode, locations, onPick){
+    lastPickerMode = mode;
+    el.locPickerEyebrow.textContent = mode === 'sold' ? 'Sold' : 'Move Stock';
+    el.locPickerDesc.textContent = mode === 'sold' ? 'tap the one you\'re selling from' : 'tap the one you\'re moving it from';
     el.moveLocProductCode.textContent = productCode;
     el.moveLocationList.innerHTML = '';
     locations.forEach(function(loc){
@@ -1942,8 +1951,8 @@
       btn.className = 'secondary-btn full move-location-btn';
       btn.textContent = loc.location + ' — ' + loc.quantity + ' on hand';
       btn.addEventListener('click', function(){
-        closeMoveLocationPicker();
-        openQuantityPrompt('move', productCode, loc.location, loc.quantity);
+        closeLocationPicker();
+        onPick(loc);
       });
       el.moveLocationList.appendChild(btn);
     });
@@ -1951,113 +1960,124 @@
     el.moveLocationOverlay.hidden = false;
   }
 
-  function closeMoveLocationPicker(){
+  function closeLocationPicker(){
     el.moveLocationOverlay.hidden = true;
   }
 
   el.moveLocationCancelBtn.addEventListener('click', function(){
-    closeMoveLocationPicker();
-    startScan('move');
+    closeLocationPicker();
+    startScan(lastPickerMode || 'move');
   });
 
-  // ---------- completing a move ----------
-  // Called once both halves of a move are known: pendingMove (product,
-  // quantity, origin — set by the qtyConfirmBtn handler, via beginMoveLookup
-  // above) and the destination just scanned above. Submits both as one
-  // request (see submitMoveStock / handleMoveStock_ in Code.gs) rather than
-  // a separate Remove and Add — UNLESS fromLocation is '' (the product
-  // wasn't recorded anywhere), in which case there's nothing to move FROM,
-  // so this is really just an Add at the destination (see below).
-  function performMove(destination){
-    var move = pendingMove;
-    if (!move) { stopScan(); return; }
-    el.scanCaption.textContent = 'Saving…';
-    if (!move.fromLocation) {
-      // Nothing to move from — reuses the plain Add path (submitScanEvent /
-      // handleScanEvent_ in Code.gs) rather than inventing new backend
-      // logic for "move with no origin." Destination becomes the active
-      // location first, same as a normal move does on success.
-      activeLocation = destination;
-      try { localStorage.setItem('wh_active_location', activeLocation); } catch(e) {}
-      submitScanEvent('add', move.productCode, move.quantity).then(function(resp){
-        pendingMove = null;
-        if (resp && resp.ok) {
-          flashOk();
-          vibrate(60);
-          playBeep();
-          sessionAdded = 0;
-          sessionRemoved = 0;
-          renderLocation();
-          var label = resp.productName || move.productCode;
-          recordLocalEvent({
-            productCode: move.productCode, productName: resp.productName || '',
-            action: 'add', quantity: move.quantity, location: destination,
-            scannedBy: scannerName || 'Unknown', timestamp: Date.now()
-          });
-          stopScan();
-          toast('Added ' + move.quantity + ' ' + label + ' at ' + destination + ' (wasn\'t recorded anywhere before).');
-        } else {
-          flashBad();
-          vibrate([40, 70, 40]);
-          playErrorBeep();
-          toast((resp && resp.message) || 'Could not save that — try scanning the destination again.');
-          pendingMove = move;
-          restartScan('move-destination', scanCaptionFor('move-destination'));
-        }
-      });
-      return;
-    }
-    submitMoveStock(move.productCode, move.fromLocation, destination, move.quantity).then(function(resp){
-      pendingMove = null;
-      if (resp && resp.ok) {
-        flashOk();
-        vibrate(60);
-        playBeep();
-        var label = resp.productName || move.productCode;
-        var moved = (typeof resp.movedQuantity === 'number') ? resp.movedQuantity : move.quantity;
-        var now = Date.now();
-        // Two feed entries, same as the two History rows Code.gs writes —
-        // one for the location it left, one for the location it landed in.
-        recordLocalEvent({
-          productCode: move.productCode, productName: resp.productName || '',
-          action: 'move out', quantity: moved, location: move.fromLocation,
-          scannedBy: scannerName || 'Unknown', timestamp: now
+  // ---------- Move Stock (2026-11-26 redesign) ----------
+  // Move Stock no longer asks for a destination of its own, and no longer
+  // asks how many to move — per Steve, units of the same SKU always move
+  // together, and the destination is simply whatever's already active
+  // (set only by the Scan Location button). So scanning a product in 'move'
+  // mode now does the whole thing in one step: look up where it currently
+  // is, then move all of it there, with nothing left pending in between.
+  function beginMoveLookup(productCode){
+    pauseScan();
+    el.scanCaption.textContent = 'Looking up ' + productCode + '…';
+    fetchProductLocations(productCode).then(function(resp){
+      if (!resp || !resp.ok) {
+        flashBad();
+        vibrate([40, 70, 40]);
+        playErrorBeep();
+        setScanStatus((resp && resp.message) || 'Could not look up that product — check your connection and try again.', 'error');
+        restartScan('move', scanCaptionFor('move'));
+        return;
+      }
+      var locations = Array.isArray(resp.locations) ? resp.locations : [];
+      if (locations.length > 1) {
+        locations.sort(function(a, b){ return b.quantity - a.quantity; });
+        openLocationPicker('move', productCode, locations, function(loc){
+          submitMoveTo(productCode, loc.location, loc.quantity);
         });
-        recordLocalEvent({
-          productCode: move.productCode, productName: resp.productName || '',
-          action: 'move in', quantity: moved, location: destination,
-          scannedBy: scannerName || 'Unknown', timestamp: now + 1
-        });
-        // Per Steve: after a move, treat the destination as "where you are
-        // now" rather than snapping back to the origin.
-        activeLocation = destination;
-        try { localStorage.setItem('wh_active_location', activeLocation); } catch(e) {}
-        sessionAdded = 0;
-        sessionRemoved = 0;
-        renderLocation();
-        stopScan();
-        var msg = 'Moved ' + moved + ' ' + label + ' to ' + destination;
-        if (typeof resp.requestedQuantity === 'number' && resp.requestedQuantity > moved) {
-          msg += ' (only ' + moved + ' of the ' + resp.requestedQuantity + ' requested were there to move)';
-        }
-        toast(msg);
+      } else if (locations.length === 1) {
+        submitMoveTo(productCode, locations[0].location, locations[0].quantity);
       } else {
         flashBad();
         vibrate([40, 70, 40]);
         playErrorBeep();
-        toast((resp && resp.message) || 'Could not save that move — try scanning the destination again.');
-        // Keep the move pending and let the user rescan the destination —
-        // re-scanning the product from scratch isn't needed, only this step.
-        pendingMove = move;
-        restartScan('move-destination', scanCaptionFor('move-destination'));
+        setScanStatus(productCode + ' isn\'t currently recorded anywhere — nothing to move. Scan it in with Scan Location instead.', 'error');
+        restartScan('move', scanCaptionFor('move'));
+      }
+    });
+  }
+
+  function submitMoveTo(productCode, fromLocation, quantity){
+    el.scanCaption.textContent = 'Saving…';
+    submitMoveStock(productCode, fromLocation, activeLocation, quantity).then(function(resp){
+      if (resp && resp.ok) {
+        flashOk();
+        vibrate(60);
+        playBeep();
+        var label = resp.productName || productCode;
+        var moved = (typeof resp.movedQuantity === 'number') ? resp.movedQuantity : quantity;
+        var now = Date.now();
+        // Two feed entries, same as the two History rows Code.gs writes —
+        // one for the location it left, one for the location it landed in.
+        recordLocalEvent({
+          productCode: productCode, productName: resp.productName || '',
+          action: 'move out', quantity: moved, location: fromLocation,
+          scannedBy: scannerName || 'Unknown', timestamp: now
+        });
+        recordLocalEvent({
+          productCode: productCode, productName: resp.productName || '',
+          action: 'move in', quantity: moved, location: activeLocation,
+          scannedBy: scannerName || 'Unknown', timestamp: now + 1
+        });
+        setScanStatus('Moved ' + moved + ' ' + label + ' from ' + fromLocation + ' to ' + activeLocation + '.', 'ok');
+        restartScan('move', scanCaptionFor('move'));
+      } else {
+        flashBad();
+        vibrate([40, 70, 40]);
+        playErrorBeep();
+        setScanStatus((resp && resp.message) || 'Could not save that move — try again.', 'error');
+        restartScan('move', scanCaptionFor('move'));
+      }
+    });
+  }
+
+  // ---------- Sold (2026-11-26, replaces the old Remove Stock) ----------
+  // Mirrors Move's lookup above — scanning a product finds where it's
+  // currently recorded (rather than requiring you to be standing there) —
+  // but, unlike Move, still asks how many to sell: selling can be partial
+  // (a few units out of a SKU that has several), unlike a physical move,
+  // where everything at that spot has to go together.
+  function beginSoldLookup(productCode){
+    pauseScan();
+    el.scanCaption.textContent = 'Looking up ' + productCode + '…';
+    fetchProductLocations(productCode).then(function(resp){
+      if (!resp || !resp.ok) {
+        flashBad();
+        vibrate([40, 70, 40]);
+        playErrorBeep();
+        setScanStatus((resp && resp.message) || 'Could not look up that product — check your connection and try again.', 'error');
+        restartScan('sold', scanCaptionFor('sold'));
+        return;
+      }
+      var locations = Array.isArray(resp.locations) ? resp.locations : [];
+      if (locations.length > 1) {
+        locations.sort(function(a, b){ return b.quantity - a.quantity; });
+        openLocationPicker('sold', productCode, locations, function(loc){
+          openQuantityPrompt('sold', productCode, loc.location, loc.quantity);
+        });
+      } else if (locations.length === 1) {
+        openQuantityPrompt('sold', productCode, locations[0].location, locations[0].quantity);
+      } else {
+        flashBad();
+        vibrate([40, 70, 40]);
+        playErrorBeep();
+        setScanStatus(productCode + ' isn\'t currently recorded anywhere — nothing to sell.', 'error');
+        restartScan('sold', scanCaptionFor('sold'));
       }
     });
   }
 
   el.scanLocationBtn.addEventListener('click', function(){ ensureAudio(); startScan('location'); });
-  el.changeLocationBtn.addEventListener('click', function(){ ensureAudio(); startScan('location'); });
-  el.scanAddBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanAddBtn.disabled) startScan('add'); });
-  el.scanRemoveBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanRemoveBtn.disabled) startScan('remove'); });
+  el.scanSoldBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanSoldBtn.disabled) startScan('sold'); });
   el.scanMoveBtn.addEventListener('click', function(){ ensureAudio(); if (!el.scanMoveBtn.disabled) startScan('move'); });
   el.cancelScanBtn.addEventListener('click', stopScan);
   el.switchCameraBtn.addEventListener('click', function(){
@@ -2077,6 +2097,7 @@
   function boot(){
     renderWho();
     renderLocation();
+    setScanStatus(activeLocation ? 'Scanning into ' + activeLocation + '. Tap Scan Location to change it.' : 'Scan a location to begin.');
     renderFeed(mergeFeed());
     checkForUpdate(false);
 
